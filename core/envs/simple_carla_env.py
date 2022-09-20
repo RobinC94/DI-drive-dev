@@ -7,12 +7,11 @@ from gym import spaces
 from collections import defaultdict
 
 from .base_drive_env import BaseDriveEnv
-from core.simulators import CarlaSimulator
 from core.utils.others.visualizer import Visualizer
 from core.utils.simulator_utils.carla_utils import visualize_birdview
 from core.utils.env_utils.stuck_detector import StuckDetector
 from core.utils.simulator_utils.carla_utils import lane_mid_distance
-
+from core.simulators import CarlaSimulator
 
 class SimpleCarlaEnv(BaseDriveEnv):
     """

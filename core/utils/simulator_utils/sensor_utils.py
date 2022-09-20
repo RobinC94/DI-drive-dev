@@ -12,7 +12,7 @@ from easydict import EasyDict
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from core.simulators.carla_data_provider import CarlaDataProvider
+from core.simulators.carla_interface import CarlaInterface
 from ding.utils.default_helper import deep_merge_dicts
 
 DEFAULT_CAMERA_CONFIG = {
@@ -82,6 +82,7 @@ class SensorHelper(object):
         self._timestamps = {}
         self._random_aug_pos = None
         self._random_aug_rot = None
+        self.hero_vehicle = None
 
     def setup_sensors(self, world: carla.World, vehicle: carla.Actor) -> None:
         """
@@ -91,6 +92,7 @@ class SensorHelper(object):
             - world (carla.World): Carla world
             - vehicle (carla.Actor): ego vehicle
         """
+        self.hero_vehicle = vehicle
         bp_library = world.get_blueprint_library()
         if self._aug_cfg:
             self._aug_cfg = EasyDict(deep_merge_dicts(DEFAULT_CAMERA_AUG_CONFIG, self._aug_cfg))
@@ -222,7 +224,31 @@ class SensorHelper(object):
             }
         return sensor_data
 
+    # def get_state(self) -> Dict:
 
+    #     # 入参：hero_actor
+    #     vehicle = CarlaDataProvider.get_hero_actor()
+    #     speed = CarlaDataProvider.get_speed(vehicle) * 3.6
+    #     transform = CarlaDataProvider.get_transform(vehicle)
+    #     location = transform.location
+    #     forward_vector = transform.get_forward_vector()
+    #     acceleration = CarlaDataProvider.get_acceleration(vehicle)
+    #     angular_velocity = CarlaDataProvider.get_angular_velocity(vehicle)
+    #     velocity = CarlaDataProvider.get_speed_vector(vehicle)
+
+    #     state = {
+    #         'speed': speed,
+    #         'location': np.array([location.x, location.y, location.z]),
+    #         'forward_vector': np.array([forward_vector.x, forward_vector.y]),
+    #         'acceleration': np.array([acceleration.x, acceleration.y, acceleration.z]),
+    #         'velocity': np.array([velocity.x, velocity.y, velocity.z]),
+    #         'angular_velocity': np.array([angular_velocity.x, angular_velocity.y, angular_velocity.z]),
+    #         'rotation': np.array([transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll]),
+    #    }
+
+    #     return state
+
+# 自己写的：解析img, lidar, gnss
 class CallBack(object):
     """
     Class the sensors listen to in order to receive their data each frame
@@ -345,10 +371,11 @@ class TrafficLightHelper(object):
         - tick
     """
 
-    def __init__(self, hero_vehicle: carla.Actor, debug: bool = False) -> None:
+    def __init__(self, carla_interface, hero_vehicle: carla.Actor, debug: bool = False) -> None:
+        self._carla_interface = carla_interface
         self._hero_vehicle = hero_vehicle
-        self._world = CarlaDataProvider.get_world()
-        self._map = CarlaDataProvider.get_map()
+        self._world = carla_interface._world
+        self._map = carla_interface.get_map()
 
         self._light_dis_thresh = 20
         self._active_light = None
@@ -369,7 +396,7 @@ class TrafficLightHelper(object):
         in current road and check if the vehicle has crossed them.
         """
         self.ran_light = False
-        vehicle_transform = CarlaDataProvider.get_transform(self._hero_vehicle)
+        vehicle_transform = self._carla_interface.get_transform(self._hero_vehicle)
         vehicle_location = vehicle_transform.location
 
         self._active_light, light_trigger_location = self._get_active_light()
@@ -453,15 +480,15 @@ class TrafficLightHelper(object):
                         self._last_light = None
 
     def _get_active_light(self) -> Tuple[Optional[carla.Actor], Optional[carla.Vector3D]]:
-        lights_list = CarlaDataProvider.get_actor_list().filter("*traffic_light*")
+        lights_list = self._carla_interface.get_actor_list().filter("*traffic_light*")
 
-        vehicle_transform = CarlaDataProvider.get_transform(self._hero_vehicle)
+        vehicle_transform = self._carla_interface.get_transform(self._hero_vehicle)
         vehicle_location = vehicle_transform.location
-        vehicle_waypoint = CarlaDataProvider._map.get_waypoint(vehicle_location)
+        vehicle_waypoint = self._carla_interface._map.get_waypoint(vehicle_location)
 
         for traffic_light in lights_list:
-            object_location = CarlaDataProvider.get_trafficlight_trigger_location(traffic_light)
-            object_waypoint = CarlaDataProvider._map.get_waypoint(object_location)
+            object_location = self._carla_interface.get_trafficlight_trigger_location(traffic_light)
+            object_waypoint = self._carla_interface._map.get_waypoint(object_location)
 
             if object_waypoint.road_id != vehicle_waypoint.road_id:
                 continue

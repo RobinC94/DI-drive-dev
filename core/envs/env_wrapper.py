@@ -51,8 +51,6 @@ class CarlaEnvWrapper(gym.Wrapper):
         """
         obs = self.env.reset(*args, **kwargs)
         obs = to_ndarray(obs, dtype=np.float32)
-        if isinstance(obs, np.ndarray) and len(obs.shape) == 3:
-            obs = obs.transpose((2, 0, 1))
         self._final_eval_reward = 0.0
         return obs
 
@@ -74,8 +72,6 @@ class CarlaEnvWrapper(gym.Wrapper):
         obs, rew, done, info = self.env.step(action)
         self._final_eval_reward += rew
         obs = to_ndarray(obs, dtype=np.float32)
-        if isinstance(obs, np.ndarray) and len(obs.shape) == 3:
-            obs = obs.transpose((2, 0, 1))
         rew = to_ndarray([rew], dtype=np.float32)
         if done:
             info['final_eval_reward'] = self._final_eval_reward

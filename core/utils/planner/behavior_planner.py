@@ -3,9 +3,8 @@ from typing import Dict, List, Tuple
 import carla
 
 from .basic_planner import AgentState, BasicPlanner, RoadOption
-from core.utils.simulator_utils.carla_agents.navigation.types_behavior import Cautious, Aggressive, Normal
-from core.simulators.carla_data_provider import CarlaDataProvider
-from core.utils.simulator_utils.carla_agents.tools.misc import is_within_distance, compute_distance, positive
+from core.utils.simulator_utils.agents.navigation.types_behavior import Cautious, Aggressive, Normal
+from core.utils.simulator_utils.agents.tools.misc import is_within_distance, compute_distance, positive
 from core.utils.planner.planner_utils import get_next_until_junction, generate_change_lane_route
 
 
@@ -34,8 +33,8 @@ class BehaviorPlanner(BasicPlanner):
         min_speed=5,
     )
 
-    def __init__(self, cfg: Dict) -> None:
-        super().__init__(cfg)
+    def __init__(self, cfg: Dict, carla_interface: 'CarlaInterface') -> None:  # noqa
+        super().__init__(cfg, carla_interface)
 
         self._speed = 0
         self._incoming_waypoint = None
@@ -148,7 +147,7 @@ class BehaviorPlanner(BasicPlanner):
         """
         assert self._route is not None
 
-        vehicle_transform = CarlaDataProvider.get_transform(self._hero_vehicle)
+        vehicle_transform = self._carla_interface.get_transform(self._hero_vehicle)
         self._vehicle_location = vehicle_transform.location
         self.current_waypoint = self._map.get_waypoint(
             self._vehicle_location, lane_type=carla.LaneType.Driving, project_to_road=True
@@ -189,13 +188,13 @@ class BehaviorPlanner(BasicPlanner):
         if self._waypoints_buffer:
             self.target_waypoint, self.target_road_option = self._waypoints_buffer[0]
         self.agent_state = AgentState.NAVIGATING
-        self._speed = CarlaDataProvider.get_speed(self._hero_vehicle) * 3.6
+        self._speed = self._carla_interface.get_speed(self._hero_vehicle) * 3.6
         self.speed_limit = self._hero_vehicle.get_speed_limit()
         look_ahead_steps = int((self.speed_limit) / 10)
         incoming_waypoint, incoming_direction = self.get_incoming_waypoint_and_direction(look_ahead_steps)
 
         # 1: Red lights and stops behavior
-        light_state, _ = CarlaDataProvider.is_light_red(self._hero_vehicle)
+        light_state, _ = self._carla_interface.is_light_red(self._hero_vehicle)
         if light_state:
             self.agent_state = AgentState.BLOCKED_RED_LIGHT
             return
@@ -216,19 +215,19 @@ class BehaviorPlanner(BasicPlanner):
                 return
 
         # 2.2: BIke avoidancd behaviors
-        bike_state, bike = CarlaDataProvider.is_bike_hazard(self._hero_vehicle)
+        bike_state, bike = self._carla_interface.is_bike_hazard(self._hero_vehicle)
         if bike_state:
             self.agent_state = AgentState.BLOCKED_BY_BIKE
 
         # 2.3: Car changelane behaviors
-        lane_vehicle_state, vehicle = CarlaDataProvider.is_lane_vehicle_hazard(
+        lane_vehicle_state, vehicle = self._carla_interface.is_lane_vehicle_hazard(
             self._hero_vehicle, self.target_road_option
         )
         if lane_vehicle_state:
             self.agent_state = AgentState.BLOCKED_BY_VEHICLE
 
         # 2.4: Car in junction  behaviors
-        junction_vehicle_state, vehicle = CarlaDataProvider.is_junction_vehicle_hazard(
+        junction_vehicle_state, vehicle = self._carla_interface.is_junction_vehicle_hazard(
             self._hero_vehicle, self.target_road_option
         )
         if junction_vehicle_state:
@@ -248,7 +247,7 @@ class BehaviorPlanner(BasicPlanner):
             if distance < self.behavior.braking_distance:
                 self.agent_state = AgentState.BLOCKED_BY_VEHICLE
             else:
-                vehicle_speed = CarlaDataProvider.get_speed(vehicle) * 3.6
+                vehicle_speed = self._carla_interface.get_speed(vehicle) * 3.6
                 delta_v = max(1, (self._speed - vehicle_speed) / 3.6)
                 ttc = distance / delta_v if delta_v != 0 else distance / np.nextafter(0., 1.)
 
@@ -390,7 +389,7 @@ class BehaviorPlanner(BasicPlanner):
             if vehicle_state and self.target_road_option == RoadOption.LANEFOLLOW \
                     and not self.current_waypoint.is_junction and self._speed > 10 \
                     and self.behavior.overtake_counter == 0 \
-                    and self._speed > CarlaDataProvider.get_speed(vehicle) * 3.6:
+                    and self._speed > self._carla_interface.get_speed(vehicle) * 3.6:
                 self._overtake(vehicle_list)
 
             # Check for tailgating
@@ -467,7 +466,7 @@ class BehaviorPlanner(BasicPlanner):
             up_angle_th=180,
             low_angle_th=160
         )
-        if behind_vehicle_state and self._speed < CarlaDataProvider.get_speed(behind_vehicle) * 3.6:
+        if behind_vehicle_state and self._speed < self._carla_interface.get_speed(behind_vehicle) * 3.6:
             if (right_turn == carla.LaneChange.Right or right_turn == carla.LaneChange.Both) and \
                     self.current_waypoint.lane_id * right_wpt.lane_id > 0 and \
                     right_wpt.lane_type == carla.LaneType.Driving:

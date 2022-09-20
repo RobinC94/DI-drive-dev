@@ -4,9 +4,8 @@ import numpy as np
 from typing import Any, Dict
 
 from .basic_planner import AgentState, BasicPlanner
-from core.utils.simulator_utils.carla_agents.navigation import RoadOption
-from core.simulators.carla_data_provider import CarlaDataProvider
-from core.utils.simulator_utils.carla_agents.tools.misc import draw_waypoints
+from core.utils.simulator_utils.agents.navigation import RoadOption
+from core.utils.simulator_utils.agents.tools.misc import draw_waypoints
 
 
 class LBCPlannerNew(BasicPlanner):
@@ -20,8 +19,8 @@ class LBCPlannerNew(BasicPlanner):
         debug=False,
     )
 
-    def __init__(self, cfg: Dict) -> None:
-        super().__init__(cfg)
+    def __init__(self, cfg: Dict, carla_interface: 'CarlaInterface') -> None:  # noqa
+        super().__init__(cfg, carla_interface)
 
         # Max skip avoids misplanning when route includes both lanes.
         self._threshold_before = self._cfg.threshold_before
@@ -30,7 +29,7 @@ class LBCPlannerNew(BasicPlanner):
     def run_step(self):
         assert self._route is not None
 
-        vehicle_transform = CarlaDataProvider.get_transform(self._hero_vehicle)
+        vehicle_transform = self._carla_interface.get_transform(self._hero_vehicle)
         self.current_waypoint = self._map.get_waypoint(
             vehicle_transform.location, lane_type=carla.LaneType.Driving, project_to_road=True
         )

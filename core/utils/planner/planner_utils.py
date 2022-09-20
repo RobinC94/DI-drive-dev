@@ -1,4 +1,4 @@
-from core.utils.simulator_utils.carla_agents.navigation import RoadOption
+from core.utils.simulator_utils.agents.navigation import RoadOption
 
 
 def get_next_until_junction(start_waypoint, max_dis=float('inf')):

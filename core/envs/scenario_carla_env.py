@@ -1,261 +1,462 @@
+import math
+import sys
+from typing import Any, Dict
+import carla
+from gym import spaces
+import numpy as np
+import os
+from easydict import EasyDict
 import os
 import time
-import numpy as np
-from datetime import datetime
-from typing import Any, Dict
-from gym import spaces
+import traceback
+import signal
+import py_trees
 
+import carla
+from core.utils.env_utils.carla_data_provider_expand import CarlaDataProviderExpand
+from core.utils.planner.basic_planner import  AutoPIDPlanner
+from core.utils.simulator_utils.sensor_utils import CollisionSensor
+# from core.utils.simulator_utils.sensor_utils import TrafficLightHelper
+
+from srunner.scenariomanager.traffic_events import TrafficEventType
+from srunner.scenarios.route_scenario import convert_transform_to_location
+from srunner.tools.route_parser import RouteParser
+from team_code.planner import RoutePlanner
+from leaderboard.utils.route_manipulation import downsample_route, interpolate_trajectory
 from .base_drive_env import BaseDriveEnv
-from core.simulators import CarlaScenarioSimulator
-from core.utils.others.visualizer import Visualizer
-from core.utils.simulator_utils.carla_utils import visualize_birdview
 
+import sys
+# sys.path.insert(0,'/home/wuche/sense-lab/xad')
+# sys.path.insert(0,'/home/wuche/sense-lab/DI-drive-dev/leaderboard_package')
+# sys.path.insert(0,'/home/wuche/sense-lab/DI-drive-dev/scenario_runner')
+
+
+from leaderboard.utils.statistics_manager import StatisticsManager
+from leaderboard.utils.result_writer import ResultOutputProvider
+
+from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
+from srunner.scenariomanager.timer import GameTime
+from srunner.scenariomanager.watchdog import Watchdog
+from leaderboard.scenarios.route_scenario import RouteScenario
+from core.utils.simulator_utils.sensor_helper import SensorHelper
+from core.simulators.carla_interface import CarlaInterface
+
+sensors_to_icons = {
+    'sensor.camera.rgb':        'carla_camera',
+    'sensor.camera.semantic_segmentation': 'carla_camera',
+    'sensor.camera.depth':      'carla_camera',
+    'sensor.lidar.ray_cast':    'carla_lidar',
+    'sensor.lidar.ray_cast_semantic':    'carla_lidar',
+    'sensor.other.radar':       'carla_radar',
+    'sensor.other.gnss':        'carla_gnss',
+    'sensor.other.imu':         'carla_imu',
+    'sensor.opendrive_map':     'carla_opendrive_map',
+    'sensor.speedometer':       'carla_speedometer',
+    'sensor.other.collision':   'carla_collision'
+    
+}
+PENALTY_COLLISION_PEDESTRIAN = 0.50
+PENALTY_COLLISION_VEHICLE = 0.60
+PENALTY_COLLISION_STATIC = 0.65
+PENALTY_TRAFFIC_LIGHT = 0.70
+PENALTY_STOP = 0.80
+def compute_route_length(config):
+    trajectory = config.trajectory
+
+    route_length = 0.0
+    previous_location = None
+    for location in trajectory:
+        if previous_location:
+            dist = math.sqrt((location.x-previous_location.x)*(location.x-previous_location.x) +
+                             (location.y-previous_location.y)*(location.y-previous_location.y) +
+                             (location.z - previous_location.z) * (location.z - previous_location.z))
+            route_length += dist
+        previous_location = location
+
+    return route_length
+
+class RouteRecord():
+    def __init__(self):
+        self.route_id = None
+        self.index = None
+        self.status = 'Started'
+        self.infractions = {
+            'collisions_pedestrian': [],
+            'collisions_vehicle': [],
+            'collisions_layout': [],
+            'red_light': [],
+            'stop_infraction': [],
+            'outside_route_lanes': [],
+            'route_dev': [],
+            'route_timeout': [],
+            'vehicle_blocked': []
+        }
+
+        self.scores = {
+            'score_route': 0,
+            'score_penalty': 0,
+            'score_composed': 0
+        }
+
+        self.meta = {}
 
 class ScenarioCarlaEnv(BaseDriveEnv):
-    """
-    Carla Scenario Environment with a single hero vehicle. It uses ``CarlaScenarioSimulator`` to load scenario
-    configurations and interacts with Carla server to get running status. The Env is initialized with a scenario
-    config, which could be a route with scenarios or a single scenario. The observation, sensor settings and visualizer
-    are the same with `SimpleCarlaEnv`. The reward is derived based on the scenario criteria in each tick. The criteria
-    is also related to success and failure judgement which is used to end an episode.
 
-    When created, it will initialize environment with config and Carla TCP host & port. This method will NOT create
-    the simulator instance. It only creates some data structures to store information when running env.
+    config = dict(
+        obs=[],
+        # record='',
+        # resume=False,
+        timeout=60.0,
+        debug=False,
+    )
 
-    :Arguments:
-        - cfg (Dict): Env config dict.
-        - host (str, optional): Carla server IP host. Defaults to 'localhost'.
-        - port (int, optional): Carla server IP port. Defaults to 9000.
-        - tm_port (Optional[int], optional): Carla Traffic Manager port. Defaults to None.
+    _planner_cfg = dict(
+            # town='Town01',
+            # weather='random',
+            # sync_mode=True,
+            # delta_seconds=0.1,
+            # no_rendering=False,
+            # auto_pilot=False,
+            # n_vehicles=0,
+            # n_pedestrians=0,
+            # disable_two_wheels=False,
+            # col_threshold=400,
+            # resolution=1.0,
+            # waypoint_num=20,
+            # obs=list(),
+            # planner=dict(),
+            # aug=None,
+            # verbose=True,
+            # debug=False,
+        )
 
-    :Interfaces: reset, step, close, is_success, is_failure, render, seed
-
-    :Properties:
-        - hero_player (carla.Actor): Hero vehicle in simulator.
-    """
 
     action_space = spaces.Dict({})
     observation_space = spaces.Dict({})
     reward_space = spaces.Box(low=-float('inf'), high=float('inf'), shape=(1, ))
-    config = dict(
-        simulator=dict(),
-        # reward value if success
-        success_reward=10,
-        # whether open visualize
-        visualize=None,
-        # outputs of scenario conclusion
-        outputs=[],
-        output_dir='',
-    )
+
+    # Tunable parameters
+    _client_timeout = 10.0  # in seconds
+    _frame_rate = 20.0      # in Hz
 
     def __init__(
             self,
             cfg: Dict,
             host: str = 'localhost',
-            port: int = None,
-            tm_port: int = None,
+            port: int = 2000,
+            tm_port: int = 2500,
             **kwargs,
     ) -> None:
-        """
-        Initialize environment with config and Carla TCP host & port.
-        """
         super().__init__(cfg, **kwargs)
-        self.cfg = cfg
+        self._statistics_manager = StatisticsManager()
+        self._tm_port = tm_port
+        self._client = carla.Client(host, port)
 
-        self._simulator_cfg = self._cfg.simulator
-        self._carla_host = host
-        self._carla_port = port
-        self._carla_tm_port = tm_port
+        self._client.set_timeout(self._client_timeout)
+        self._traffic_manager = self._client.get_trafficmanager(int(self._tm_port))
+        self._timestamp_last_run = 0.0
+        self.ego_vehicles = []
+        self.scenario_duration_system = 0.0
+        self.scenario_duration_game = 0.0
 
-        self._use_local_carla = False
-        if self._carla_host != 'localhost':
-            self._use_local_carla = True
-        self._simulator = None
-
-        self._output_dir = self._cfg.output_dir
-        self._outputs = self._cfg.outputs
-
-        self._success_reward = self._cfg.success_reward
-        self._is_success = False
-        self._is_failure = False
+        self.config = None
+        self.scenario = None
+        self._sensors = self._cfg.obs
+        self._start_time = GameTime.get_time()
+        self._end_time = None
+        timeout = float(self._cfg.timeout)
+        watchdog_timeout = max(5, timeout - 2)
+        self._watchdog = Watchdog(watchdog_timeout)
         self._collided = False
-
         self._tick = 0
-        self._timeout = float('inf')
-        self._launched_simulator = False
-        self._config = None
+        self._timestamp = 0
 
-        self._visualize_cfg = self._cfg.visualize
-        self._simulator_databuffer = dict()
-        self._visualizer = None
+    def _load_planner(self):
+        world_annotations = RouteParser.parse_annotations_file(self._config.scenario_file)
+        gps_route, route = interpolate_trajectory(self.world, self._config.trajectory)
+        potential_scenarios_definitions, _ = RouteParser.scan_route_for_scenarios(self._config.town, route, world_annotations)
+        self.route = route
+        CarlaDataProvider.set_ego_vehicle_route(convert_transform_to_location(self.route))
 
-    def _init_carla_simulator(self) -> None:
-        if not self._use_local_carla:
-            print("------ Run Carla on Port: %d, GPU: %d ------" % (self._carla_port, 0))
-            #self.carla_process = subprocess.Popen()
-            self._simulator = CarlaScenarioSimulator(
-                cfg=self._simulator_cfg,
-                client=None,
-                host=self._carla_host,
-                port=self._carla_port,
-                tm_port=self._carla_tm_port
-            )
+        self._planner = AutoPIDPlanner(self._planner_cfg, CarlaDataProvider)
+        _start_location = list(CarlaDataProvider.get_map(CarlaDataProvider._world).get_spawn_points())[0].location
+
+        _end_location = list(CarlaDataProvider.get_map(CarlaDataProvider._world).get_spawn_points())[1].location
+        self._planner.set_route(self.route)
+
+        self._planner.set_destination(_start_location, _end_location, clean=True)
+        
+
+    def _load_and_wait_for_world(self, town):
+        """
+        Load a new CARLA world and provide data to CarlaDataProvider
+        """
+        self.start_system_time = time.time()
+        self._start_game_time = GameTime.get_time()
+
+        self._watchdog.start()
+        self._running = True
+        self.world = self._client.load_world(town)
+
+        # print("self.world:",self.world)
+        settings = self.world.get_settings()
+        settings.fixed_delta_seconds = 1.0 / self._frame_rate
+        settings.synchronous_mode = True
+        self.world.apply_settings(settings)
+
+        self.world.reset_all_traffic_lights()
+        CarlaDataProvider.set_client(self._client)
+        CarlaDataProvider.set_world(self.world)
+        CarlaDataProvider.set_traffic_manager_port(int(self._tm_port))
+        self._traffic_manager.set_synchronous_mode(True)
+        self._traffic_manager.set_random_device_seed(int(self._tm_port))
+
+        # Wait for the world to be ready
+        if CarlaDataProvider.is_sync_mode():
+            self.world.tick()
         else:
-            print('------ Using Remote Carla @ {}:{} ------'.format(self._carla_host, self._carla_port))
-            self._simulator = CarlaScenarioSimulator(
-                cfg=self._simulator_cfg,
-                client=None,
-                host=self._carla_host,
-                port=self._carla_port,
-                tm_port=self._carla_tm_port
-            )
-        self._launched_simulator = True
+            self.world.wait_for_tick()
 
-    def reset(self, config: Any) -> Dict:
+        if CarlaDataProvider.get_map().name != town:
+            raise Exception("The CARLA server uses the wrong map!"
+                            "This scenario requires to use map {}".format(town))
+
+    def set_global_plan(self, global_plan_gps, global_plan_world_coord):
         """
-        Reset environment to start a new episode, with provided reset params. If there is no simulator, this method will
-        create a new simulator instance. The reset param is sent to simulator's ``init`` method to reset simulator,
-        then reset all statues recording running states, and create a visualizer if needed. It returns the first frame
-        observation.
-
-        :Arguments:
-            - config (Any): Configuration instance of the scenario
-
-        :Returns:
-            Dict: The initial observation.
+        Set the plan (route) for the agent
         """
-        if not self._launched_simulator:
-            self._init_carla_simulator()
-        self._config = config
+        ds_ids = downsample_route(global_plan_world_coord, 50)
+        self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
+        self._global_plan = [global_plan_gps[x] for x in ds_ids]
 
-        self._simulator.init(self._config)
 
-        if self._visualize_cfg is not None:
-            if self._visualizer is not None:
-                self._visualizer.done()
-            else:
-                self._visualizer = Visualizer(self._visualize_cfg)
 
-            if 'Route' in config.name:
-                config_name = os.path.splitext(os.path.split(config.scenario_file)[-1])[0]
-            else:
-                config_name = config.name
-            vis_name = "{}_{}".format(config_name, time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime()))
-
-            self._visualizer.init(vis_name)
-
-        self._simulator_databuffer.clear()
-        self._collided = False
-        self._criteria_last_value = dict()
-        self._is_success = False
-        self._is_failure = False
-        self._reward = 0
-        self._tick = 0
-        self._timeout = self._simulator.end_timeout
-
-        return self.get_observations()
-
-    def step(self, action):
+    def _prepare_ego_vehicles(self, config):
         """
-        Run one time step of environment, get observation from simulator and calculate reward. The environment will
-        be set to 'done' only at success or failure. And if so, all visualizers will end. Its interfaces follow
-        the standard definition of ``gym.Env``.
-
-        :Arguments:
-            - action (Dict): Action provided by policy.
-
-        :Returns:
-            Tuple[Any, float, bool, Dict]: A tuple contains observation, reward, done and information.
+        Spawn or update the ego vehicles
         """
-        if action is not None:
-            self._simulator.apply_control(action)
-            self._simulator_databuffer.update({'action': action})
-        self._simulator.run_step()
-        self._tick += 1
+        wait_for_ego_vehicles=False
+        self.ego_vehicles=config.ego_vehicles
+        if not wait_for_ego_vehicles:
+            for vehicle in self.ego_vehicles:
+                self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
+                                                                                vehicle.transform,
+                                                                                vehicle.rolename,
+                                                                                color=vehicle.color,
+                                                                                vehicle_category=vehicle.category))
+        else:
+            ego_vehicle_missing = True
+            while ego_vehicle_missing:
+                self.ego_vehicles = []
+                ego_vehicle_missing = False
+                for ego_vehicle in self.ego_vehicles:
+                    ego_vehicle_found = False
+                    carla_vehicles = CarlaDataProvider.get_world().get_actors().filter('vehicle.*')
+                    for carla_vehicle in carla_vehicles:
+                        if carla_vehicle.attributes['role_name'] == ego_vehicle.rolename:
+                            ego_vehicle_found = True
+                            self.ego_vehicles.append(carla_vehicle)
+                            break
+                    if not ego_vehicle_found:
+                        ego_vehicle_missing = True
+                        break
 
-        obs = self.get_observations()
-        self._collided = self._simulator.collided
+            for i, _ in enumerate(self.ego_vehicles):
+                self.ego_vehicles[i].set_transform(self.ego_vehicles[i].transform)
+        # self.hero_vehicle = ego_vehicles[0]
+        # sync state
+        CarlaDataProvider.get_world().tick()
 
-        res = self._simulator.scenario_manager.get_scenario_status()
-        if res == 'SUCCESS':
-            self._is_success = True
-        elif res in ['FAILURE', 'INVALID']:
-            self._is_failure = True
+    def _setup_route_scenario(self, world, config):
+        route_scenario = RouteScenario(world=world, config=config, debug_mode=self._cfg.debug)
+        self._statistics_manager.set_scenario(route_scenario.scenario)
+        self.route_record = RouteRecord()
 
-        self._reward, reward_info = self.compute_reward()
 
-        done = self.is_success() or self.is_failure()
-        if done:
-            self._simulator.end_scenario()
-            self._conclude_scenario(self._config)
-            if self._visualizer is not None:
-                self._visualizer.done()
+        # Night mode
+        if config.weather.sun_altitude_angle < 0.0:
+            for vehicle in route_scenario.ego_vehicles:
+                vehicle.set_light_state(carla.VehicleLightState(self._vehicle_lights))
+        # if arguments.record:
+        #     self.client.start_recorder("{}/{}_rep{}.log".format(arguments.record, config.name, config.repetition_index))
 
-        info = self._simulator.get_information()
-        info.update(reward_info)
-        info.update({
-            'failure': self.is_failure(),
-            'success': self.is_success(),
-        })
+        ### 5.Load scenario and run it
+        #load_scenario(route_scenario, agent_instance, config.repetition_index)
+        GameTime.restart()
 
-        return obs, self._reward, done, info
+        self._scenario_class = route_scenario
+        self.scenario = route_scenario.scenario
+        self.scenario_tree = self.scenario.scenario_tree
+        self.ego_vehicles = route_scenario.ego_vehicles
+        self.other_actors = route_scenario.other_actors
+        self.repetition_number = config.repetition_index
 
-    def close(self):
+    def _setup_sensors(self):
+        self._sensor_icons = [sensors_to_icons[sensor['type']] for sensor in self._sensors]
+        # pass
+        CarlaDataProvider.set_world(self.world)
+        self._sensor_helper = SensorHelper(self._sensors, None)
+        self._sensor_helper.setup_sensors(self.world, self.ego_vehicles[0])
+        # self._collision_sensor = CollisionSensor(self.ego_vehicles[0], 400)
+        # self._traffic_light_helper = TrafficLightHelper(CarlaDataProvider, self.ego_vehicles[0])
+
+    def _stop_scenario(self):
         """
-        Delete simulator & visualizer instances and close environment.
+        This function triggers a proper termination of a scenario
         """
-        if self._launched_simulator:
-            self._simulator.clean_up()
-            self._simulator._set_sync_mode(False)
-            del self._simulator
-            self._launched_simulator = False
-        if self._visualizer is not None:
-            self._visualizer.done()
+        self._watchdog.stop()
 
-    def is_success(self) -> bool:
+        self.end_system_time = time.time()
+        self._end_game_time = GameTime.get_time()
+
+        self.scenario_duration_system = self.end_system_time - self.start_system_time
+        self.scenario_duration_game = self._end_game_time - self._start_game_time
+        # print("self._get_running_status():",self._get_running_status())
+        if self._get_running_status():
+            if self.scenario is not None:
+                self.scenario.terminate()
+            self._analyze_scenario()
+    
+    def _analyze_scenario(self):
         """
-        Check if the task succeed. It only happens when behavior tree ends successfully.
-
-        :Returns:
-            bool: Whether success.
+        Analyzes and prints the results of the route
         """
-        res = self._simulator.scenario_manager.get_scenario_status()
-        if res == 'SUCCESS':
-            return True
-        return False
+        global_result = '\033[92m'+'SUCCESS'+'\033[0m'
+        # print("self.scenario.get_criteria():",self.scenario.get_criteria())
+        for criterion in self.scenario.get_criteria():
+            if criterion.test_status != "SUCCESS":
+                global_result = '\033[91m'+'FAILURE'+'\033[0m'
+        # print("global_result:",global_result)
+        if self.scenario.timeout_node.timeout:
+            global_result = '\033[91m'+'FAILURE'+'\033[0m'
+        # 数据都在global_result里面
+        ResultOutputProvider(self, global_result)
 
-    def is_failure(self) -> bool:
+    def get_reward(self):
+        self.compute_reward()
+        # 这里的设计，应该是放到全局的list里，然后取最后一个，这样可以存下过程的reward
+        score_route = self.route_record.scores['score_route']
+        score_penalty = self.route_record.scores['score_penalty']
+        score_composed = self.route_record.scores['score_composed']
+        reward = {
+            "score_composed": score_composed,
+            "score_route": score_route,
+            "score_penalty": score_penalty,           
+        }
+        return reward
+
+
+    def compute_reward(self, duration_time_system=-1, duration_time_game=-1, failure=""):
         """
-        Check if the task fails. It may happen when behavior tree ends unsuccessfully or some criteria trigger.
-
-        :Returns:
-            bool: Whether failure.
+        Compute the current statistics by evaluating all relevant scenario criteria
         """
-        res = self._simulator.scenario_manager.get_scenario_status()
-        if res in ['FAILURE', 'INVALID']:
-            return True
-        return False
+        index = self._config.index
+        # if not self._registry_route_records or index >= len(self._registry_route_records):
+        #     raise Exception('Critical error with the route registry.')
 
-    def get_observations(self):
-        """
-        Get observations from simulator. The sensor data, navigation, state and information in simulator
-        are used, while not all these are added into observation dict.
+        # fetch latest record to fill in
+        # route_record = self._registry_route_records[index]
 
-        :Returns:
-            Dict: Observation dict.
-        """
-        obs = dict()
-        state = self._simulator.get_state()
-        sensor_data = self._simulator.get_sensor_data()
-        navigation = self._simulator.get_navigation()
-        information = self._simulator.get_information()
+        target_reached = False
+        score_penalty = 1.0
+        score_route = 0.0
 
-        self._simulator_databuffer['state'] = state
-        self._simulator_databuffer['navigation'] = navigation
-        self._simulator_databuffer['information'] = information
+        # meta['duration_system'] = duration_time_system
+        # route_record.meta['duration_game'] = duration_time_game
+        self.route_record.meta['route_length'] = compute_route_length(self._config)
 
-        obs.update(sensor_data)
-        obs.update(
+        if self.scenario:
+            if self.scenario.timeout_node.timeout:
+                # route_record.infractions['route_timeout'].append('Route timeout.')
+                failure = "Agent timed out"
+
+            # 切割一下字符串
+            for node in self.scenario.get_criteria():
+                if node.list_traffic_events:
+                    # analyze all traffic events
+                    for event in node.list_traffic_events:
+                        if event.get_type() == TrafficEventType.COLLISION_STATIC:
+                            score_penalty *= PENALTY_COLLISION_STATIC
+                            # route_record.infractions['collisions_layout'].append(event.get_message())
+
+                        elif event.get_type() == TrafficEventType.COLLISION_PEDESTRIAN:
+                            score_penalty *= PENALTY_COLLISION_PEDESTRIAN
+                            # route_record.infractions['collisions_pedestrian'].append(event.get_message())
+                            
+                        elif event.get_type() == TrafficEventType.COLLISION_VEHICLE:
+                            score_penalty *= PENALTY_COLLISION_VEHICLE
+                            # route_record.infractions['collisions_vehicle'].append(event.get_message())
+                            # print("event.get_message():",event.get_message())
+
+                        elif event.get_type() == TrafficEventType.OUTSIDE_ROUTE_LANES_INFRACTION:
+                            score_penalty *= (1 - event.get_dict()['percentage'] / 100)
+                            # route_record.infractions['outside_route_lanes'].append(event.get_message())
+
+                        elif event.get_type() == TrafficEventType.TRAFFIC_LIGHT_INFRACTION:
+                            score_penalty *= PENALTY_TRAFFIC_LIGHT
+                            # route_record.infractions['red_light'].append(event.get_message())
+
+                        # elif event.get_type() == TrafficEventType.ROUTE_DEVIATION:
+                        #     route_record.infractions['route_dev'].append(event.get_message())
+                        #     failure = "Agent deviated from the route"
+
+                        elif event.get_type() == TrafficEventType.STOP_INFRACTION:
+                            score_penalty *= PENALTY_STOP
+                            # route_record.infractions['stop_infraction'].append(event.get_message())
+
+                        elif event.get_type() == TrafficEventType.VEHICLE_BLOCKED:
+                            # route_record.infractions['vehicle_blocked'].append(event.get_message())
+                            failure = "Agent got blocked"
+
+                        elif event.get_type() == TrafficEventType.ROUTE_COMPLETED:
+                            score_route = 100.0
+                            target_reached = True
+                        elif event.get_type() == TrafficEventType.ROUTE_COMPLETION:
+                            if not target_reached:
+                                if event.get_dict():
+                                    score_route = event.get_dict()['route_completed']
+                                else:
+                                    score_route = 0
+
+        # update route scores
+        self.route_record.scores['score_route'] = score_route
+        self.route_record.scores['score_penalty'] = score_penalty
+        self.route_record.scores['score_composed'] = max(score_route*score_penalty, 0.0)
+
+        # update status
+        if target_reached:
+            self.route_record.status = 'Completed'
+        else:
+            self.route_record.status = 'Failed'
+            if failure:
+                self.route_record.status += ' - ' + failure
+
+        # return route_record
+
+    def get_obs(self, obs_dict):
+        # ego_vehicle_speed_vector = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
+        # for k, v in obs.items():
+        #     if v is None:
+        #         return {}
+        obs = {}
+        try:
+            state = obs_dict["state"]
+            navigation = obs_dict["navigation"]
+            sensor_data = obs_dict["sensor_data"]
+            information = obs_dict["information"]
+            obs = dict()
+            # obs_dict = {
+            #     'speed':None,
+            #     'location':None,
+            #     'forward_vector':None,
+            #     'target':None,
+            #     'speed_limit':None,
+            #     'command':None,
+            #     'obs':None,
+            #     'agent_state':None
+            # }
+            obs.update(sensor_data)
+            obs.update(
             {
                 'tick': information['tick'],
                 'timestamp': np.float32(information['timestamp']),
@@ -274,124 +475,347 @@ class ScenarioCarlaEnv(BaseDriveEnv):
                 'angular_velocity': np.float32(state['angular_velocity']),
                 'rotation': np.float32(state['rotation']),
                 'is_junction': np.float32(state['is_junction']),
-                'tl_state': state['tl_state'],
-                'tl_dis': np.float32(state['tl_dis']),
+                # 'tl_state': state['tl_state'],
+                # 'tl_dis': np.float32(state['tl_dis']),
                 'waypoint_list': navigation['waypoint_list'],
                 'direction_list': navigation['direction_list'],
             }
         )
+            # obs_dict['speed'] = obs["navigation"]["current_speed"]
+            # obs_dict['command'] = obs["navigation"]["command"]
+            # obs_dict['location'] = obs["navigation"]["node"]
+            # obs_dict['forward_vector'] = obs["navigation"]["target_forward"]
+            # obs_dict['speed_limit'] = obs["navigation"]["speed_limit"]
+            # obs_dict['target'] = obs["navigation"]["target"]
+            obs['rgb'] = sensor_data["rgb"]
+            # obs_dict['agent_state'] = obs["agent_state"]
 
-        if self._visualizer is not None:
-            if self._visualize_cfg.type not in sensor_data:
-                raise ValueError("visualize type {} not in sensor data!".format(self._visualize_cfg.type))
-            self._render_buffer = sensor_data[self._visualize_cfg.type].copy()
-            if self._visualize_cfg.type == 'birdview':
-                self._render_buffer = visualize_birdview(self._render_buffer)
+
+        except Exception as e:
+            print(e)
+
         return obs
 
-    def compute_reward(self):
+    def step(self, action=None):
+        try:
+            self._planner.run_step()
+            timestamp = self._tick_carla_world()
+            self._tick += 1
+            self._timestamp = timestamp.elapsed_seconds
+            # self._collided = self._collision_sensor.collided
+            if timestamp and self._running:
+                obs = self.get_observation()
+                obs = self.get_obs(obs)
+                # print("obs:",obs)
+                reward=self.get_reward()
+                done=not self._running
+                info={}
+                self.action=action
+
+                self.ego_vehicles[0].apply_control(self.action)
+                self._adjust_world_transform()
+            else:
+                raise ValueError
+        except Exception as e:
+            # The scenario is wrong -> set the ejecution to crashed and stop
+            print("\n\033[91mThe scenario could not be loaded:")
+            print("> {}\033[0m\n".format(e))
+            traceback.print_exc()
+
+            self.crash_message = "Simulation crashed"
+            self.entry_status = "Crashed"
+
+            # self._register_statistics(config, cfg.arguments.checkpoint, self.entry_status, self.crash_message)
+
+            # if cfg.arguments.record:
+            #     self.client.stop_recorder()
+
+            self.close()
+        return obs, reward, done, info
+
+    def get_information(self) -> Dict:
         """
-        Compute reward for current frame, and return details in a dict. In short, it contains goal reward,
-        route following reward calculated by criteria in current and last frame, and failure reward by checking criteria
-        in each frame.
+        Get running information including time and ran light counts in current world.
 
         :Returns:
-            Tuple[float, Dict]: Total reward value and detail for each value.
+            Dict: Information dict.
         """
-        goal_reward = 0
-        if self._is_success:
-            goal_reward += self._success_reward
-
-        elif self._is_failure:
-            goal_reward -= self._success_reward
-
-        criteria_dict = self._simulator.get_criteria()
-
-        failure_reward = 0
-        complete_reward = 0
-        for info, value in criteria_dict.items():
-            if value[0] == 'FAILURE':
-                if info in self._criteria_last_value and value[1] != self._criteria_last_value[info][1]:
-                    if 'Collision' in info:
-                        failure_reward -= 10
-                    elif 'RunningRedLight' in info:
-                        failure_reward -= 10
-                    elif 'OutsideRouteLanes' in info:
-                        failure_reward -= 10
-            if 'RouteCompletion' in info and info in self._criteria_last_value:
-                complete_reward = self._finish_reward / 100 * (value[1] - self._criteria_last_value[info][1])
-            self._criteria_last_value[info] = value
-
-        reward_info = dict()
-        reward_info['goal_reward'] = goal_reward
-        reward_info['complete_reward'] = complete_reward
-        reward_info['failure_reward'] = failure_reward
-
-        total_reward = goal_reward + failure_reward + complete_reward
-
-        return total_reward, reward_info
-
-    def render(self):
-        """
-        Render a runtime visualization on screen, save a gif video file according to visualizer config.
-        The main canvas is from a specific sensor data. It only works when 'visualize' is set in config dict.
-        """
-        if self._visualizer is None:
-            return
-
-        render_info = {
-            'collided': self._collided,
-            'reward': self._reward,
+        information = {
             'tick': self._tick,
-            'end_timeout': self._simulator.end_timeout,
-            'end_distance': self._simulator.end_distance,
-            'total_distance': self._simulator.total_distance,
+            'timestamp': self._timestamp,
+            # 'total_lights': self._traffic_light_helper.total_lights,
+            # 'total_lights_ran': self._traffic_light_helper.total_lights_ran
         }
-        render_info.update(self._simulator_databuffer['state'])
-        render_info.update(self._simulator_databuffer['navigation'])
-        render_info.update(self._simulator_databuffer['information'])
-        render_info.update(self._simulator_databuffer['action'])
 
-        self._visualizer.paint(self._render_buffer, render_info)
-        self._visualizer.run_visualize()
+        return information
 
-    def seed(self, seed: int) -> None:
-        """
-        Set random seed for environment.
+    def get_observation(self):
+        sensor_data = self._sensor_helper.get_sensors_data()
 
-        :Arguments:
-            - seed (int): Random seed value.
-        """
-        print('[ENV] Setting seed:', seed)
-        np.random.seed(seed)
+        for k, v in sensor_data.items():
+            if v is None or len(v)==0:
+                return {}
 
-    def __repr__(self) -> str:
-        return "ScenarioCarlaEnv with host %s, port %s." % (self._carla_host, self._carla_port)
 
-    def _conclude_scenario(self, config: Any) -> None:
-        """
-        Provide feedback about success/failure of a scenario
-        """
+        speed = CarlaDataProvider.get_velocity(self.ego_vehicles[0]) * 3.6
+        transform = CarlaDataProvider.get_transform(self.ego_vehicles[0])
+        location = transform.location
+        forward_vector = transform.get_forward_vector()
+        acceleration = CarlaDataProviderExpand.get_acceleration(self.ego_vehicles[0])
+        angular_velocity = CarlaDataProviderExpand.get_angular_velocity(self.ego_vehicles[0])
+        velocity = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
 
-        # Create the filename
-        current_time = str(datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
-        junit_filename = None
-        filename = None
-        config_name = config.name
-
-        if self._output_dir != '':
-            os.makedirs(self._output_dir, exist_ok=True)
-            config_name = os.path.join(self._output_dir, config_name)
-        if 'junit' in self._outputs:
-            junit_filename = config_name + '_' + current_time + ".xml"
-        if 'file' in self._outputs:
-            filename = config_name + '_' + current_time + "txt"
-
-        if self._simulator.scenario_manager.analyze_scenario(True, filename, junit_filename):
-            self._is_failure = True
+        # light_state = self._traffic_light_helper.active_light_state.value
+        drive_waypoint = CarlaDataProvider._map.get_waypoint(
+            location,
+            project_to_road=False,
+        )
+        is_junction = False
+        if drive_waypoint is not None:
+            is_junction = drive_waypoint.is_junction
+            self._off_road = False
         else:
-            self._is_success = True
+            self._off_road = True
+        lane_waypoint = CarlaDataProvider._map.get_waypoint(location, project_to_road=True, lane_type=carla.LaneType.Driving)
+        lane_location = lane_waypoint.transform.location
+        lane_forward_vector = lane_waypoint.transform.rotation.get_forward_vector()
+
+        state = {
+            'speed': speed,
+            'location': np.array([location.x, location.y, location.z]),
+            'forward_vector': np.array([forward_vector.x, forward_vector.y]),
+            'acceleration': np.array([acceleration.x, acceleration.y, acceleration.z]),
+            'velocity': np.array([velocity.x, velocity.y, velocity.z]),
+            'angular_velocity': np.array([angular_velocity.x, angular_velocity.y, angular_velocity.z]),
+            'rotation': np.array([transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll]),
+            'is_junction': is_junction,
+            'lane_location': np.array([lane_location.x, lane_location.y]),
+            'lane_forward': np.array([lane_forward_vector.x, lane_forward_vector.y]),
+            # 'tl_state': light_state,
+            # 'tl_dis': self._traffic_light_helper.active_light_dis,
+        }
+
+        if lane_waypoint is None:
+            state['lane_forward'] = None
+        else:
+            lane_forward_vector = lane_waypoint.transform.get_forward_vector()
+            state['lane_forward'] = np.array([lane_forward_vector.x, lane_forward_vector.y])
+
+        navigation = self.get_navigation()
+        information = self.get_information()
+        
+        obs = {}
+        obs.update({"sensor_data": sensor_data, "navigation": navigation, 
+         "state": state, "information": information})
+
+        return obs
+
+    def get_navigation(self):
+        navigation = {}
+        if not self._planner:
+            return navigation
+        try:
+            command = self._planner.node_road_option
+            node_location = self._planner.node_waypoint.transform.location
+            node_forward = self._planner.node_waypoint.transform.rotation.get_forward_vector()
+            target_location = self._planner.target_waypoint.transform.location
+            target_forward = self._planner.target_waypoint.transform.rotation.get_forward_vector()
+            waypoint_list = self._planner.get_waypoints_list(20)
+            direction_list = self._planner.get_direction_list(20)
+            agent_state = self._planner.agent_state
+            speed_limit = self._planner.speed_limit
+            self._end_distance = self._planner.distance_to_goal
+            self._end_timeout = self._planner.timeout
+
+            waypoint_location_list = []
+            for wp in waypoint_list:
+                wp_loc = wp.transform.location
+                wp_vec = wp.transform.rotation.get_forward_vector()
+                waypoint_location_list.append([wp_loc.x, wp_loc.y, wp_vec.x, wp_vec.y])
+
+            if not self._off_road:
+                current_waypoint = self._planner.current_waypoint
+                node_waypoint = self._planner.node_waypoint
+
+                # Lanes and roads are too chaotic at junctions
+                if current_waypoint.is_junction or node_waypoint.is_junction:
+                    self._wrong_direction = False
+                else:
+                    node_yaw = node_waypoint.transform.rotation.yaw % 360
+                    cur_yaw = current_waypoint.transform.rotation.yaw % 360
+
+                    wp_angle = (node_yaw - cur_yaw) % 360
+
+                    if 150 <= wp_angle <= (360 - 150):
+                        self._wrong_direction = True
+                    else:
+                        # Changing to a lane with the same direction
+                        self._wrong_direction = False
+
+            navigation = {
+                'agent_state': agent_state.value,
+                'command': command.value,
+                'node': np.array([node_location.x, node_location.y]),
+                'node_forward': np.array([node_forward.x, node_forward.y]),
+                'target': np.array([target_location.x, target_location.y]),
+                'target_forward': np.array([target_forward.x, target_forward.y]),
+                'waypoint_list': np.array(waypoint_location_list),
+                'speed_limit': np.array(speed_limit),
+                'direction_list': np.array(direction_list)
+            }
+        except Exception as e:
+            print("exception:", e)
+
+        return navigation
+
+    def reset(self, config) -> Any:
+        self._config = config
+        try:
+            while True:
+                self._statistics_manager.set_route(config.name, config.index)
+
+
+                self._load_and_wait_for_world(config.town)
+                self._prepare_ego_vehicles(config)
+                self._setup_route_scenario(self.world, config)
+                self._load_planner()
+                self._setup_sensors()
+                if self._ready():
+                    break
+        except Exception as e:
+            # The scenario is wrong -> set the ejecution to crashed and stop
+            print("\n\033[91mThe scenario could not be loaded:")
+            print("> {}\033[0m\n".format(e))
+            traceback.print_exc()
+
+            self.crash_message = "Simulation crashed"
+            self.entry_status = "Crashed"
+
+            self.close()
+        return self.get_observation()  
+
+    def close(self):
+        try:
+            if self._get_running_status() \
+                    and hasattr(self, 'world') and self.world:
+                # Reset to asynchronous mode
+                settings = self.world.get_settings()
+                settings.synchronous_mode = False
+                settings.fixed_delta_seconds = None
+                self.world.apply_settings(settings)
+                self._traffic_manager.set_synchronous_mode(False)
+
+
+            print("\033[1m> Stopping the route\033[0m")
+            self._stop_scenario()
+
+            CarlaDataProvider.cleanup()
+
+            for i, _ in enumerate(self.ego_vehicles):
+                if self.ego_vehicles[i]:
+                    self.ego_vehicles[i].destroy()
+                    self.ego_vehicles[i] = None
+            self.ego_vehicles = []
+            self._timestamp_last_run = 0.0
+            self.scenario_duration_system = 0.0
+            self.scenario_duration_game = 0.0
+            self.start_system_time = None
+            self.end_system_time = None
+            self._end_game_time = None
+            self._collided = False
+            # print("=====closed!")
+
+            if self.crash_message == "Simulation crashed":
+                sys.exit(-1)
+
+        except Exception as e:
+            print("\n\033[91mFailed to stop the scenario, the statistics might be empty:")
+            print("> {}\033[0m\n".format(e))
+            traceback.print_exc()
+
+            self.crash_message = "Simulation crashed"
+
+    def _get_running_status(self):
+        """
+        returns:
+           bool: False if watchdog exception occured, True otherwise
+        """
+        return self._watchdog.get_status()
+    
+    def _tick_carla_world(self):
+        try:
+            world = CarlaDataProvider.get_world()
+            if world:
+                snapshot = world.get_snapshot()
+                if snapshot:
+                    timestamp = snapshot.timestamp
+            # print("timestamp:",timestamp)
+            if timestamp:
+                # run_eval._tick_scenario(timestamp,statistics_manager,config)
+                if self._timestamp_last_run < timestamp.elapsed_seconds and self._running:
+                    self._timestamp_last_run = timestamp.elapsed_seconds
+                    self._watchdog.update()
+                    GameTime.on_carla_tick(timestamp)
+                    CarlaDataProvider.on_carla_tick()
+                    CarlaDataProviderExpand.on_carla_tick()
+        except Exception as e:
+            # The scenario is wrong -> set the ejecution to crashed and stop
+            print("\n\033[91m Terminated:")
+            print("> {}\033[0m\n".format(e))
+            traceback.print_exc()
+
+            self.crash_message = "Simulation crashed"
+            self.entry_status = "Crashed"
+
+            #self._register_statistics(self.config, cfg.arguments.checkpoint, self.entry_status, self.crash_message)
+
+        return timestamp
+
+    def _adjust_world_transform(self):
+        if self._cfg.debug:
+            print("\n")
+            py_trees.display.print_ascii_tree(
+                self.scenario_tree, show_status=True)
+            sys.stdout.flush()
+        # print("self.scenario_tree.status：",self.scenario_tree.status)
+        self.scenario_tree.tick_once()
+        if self.scenario_tree.status != py_trees.common.Status.RUNNING:
+            self._running = False
+
+        try:
+        # 调整carla_world视角
+            spectator = CarlaDataProvider.get_world().get_spectator()
+            ego_trans = self.ego_vehicles[0].get_transform()
+            spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=50),
+                                                        carla.Rotation(pitch=-90)))
+                # if self._running and getself._running_status():
+            if self._running and self._get_running_status():
+                CarlaDataProvider.get_world().tick()
+        except Exception as e:
+            # The scenario is wrong -> set the ejecution to crashed and stop
+            print("\n\033[91m Terminated:")
+            print("> {}\033[0m\n".format(e))
+            traceback.print_exc()
+
+            self.crash_message = "Simulation crashed"
+            self.entry_status = "Crashed"
+
+            #self._register_statistics(self.config, cfg.arguments.checkpoint, self.entry_status, self.crash_message)
+
+    def _ready(self, ticks: int = 30) -> bool:
+        for _ in range(ticks):
+            control = carla.VehicleControl()
+            control.steer = float(0)
+            control.throttle = float(0)
+            control.brake = float(0)
+            self.step(control)
+            self.get_observation()
+        # print("ready!!!!!!!")
+        self._tick = 0
+        self._timestamp = 0
+
+        return not self._collided
 
     @property
-    def hero_player(self):
-        return self._simulator.hero_player
+    def collided(self) -> bool:
+        return self._collided

@@ -13,7 +13,7 @@ from collections import defaultdict
 from .base_simulator import BaseSimulator
 from core.utils.simulator_utils.sensor_utils import SensorHelper, CollisionSensor, TrafficLightHelper
 from core.utils.simulator_utils.map_utils import BeVWrapper
-from core.simulators.carla_data_provider import CarlaDataProvider
+from core.simulators.carla_interface import CarlaInterface
 from core.utils.simulator_utils.carla_utils import control_to_signal, get_birdview
 from core.utils.planner import BasicPlanner, BehaviorPlanner, LBCPlannerNew
 from core.utils.others.tcp_helper import find_traffic_manager_port
@@ -41,6 +41,7 @@ PRESET_WEATHERS = {
 VEHICLE_NAME = 'vehicle.tesla.model3'
 ROLE_NAME = 'hero'
 OBS_TYPE_LIST = ['state', 'depth', 'rgb', 'segmentation', 'bev', 'lidar', 'gnss']
+# OBS_TYPE_LIST = ["sensor.camera.rgb",  "sensor.lidar.ray_cast", "sensor.other.imu", "sensor.other.gnss", "sensor.speedometer"]
 
 PLANNER_DICT = {
     'basic': BasicPlanner,
@@ -184,6 +185,7 @@ class CarlaSimulator(BaseSimulator):
         self._end_distance = float('inf')
         self._end_timeout = float('inf')
 
+        self._carla_interface = CarlaInterface()
         self._hero_actor = None
         self._start_location = None
         self._sensor_helper = None
@@ -235,9 +237,9 @@ class CarlaSimulator(BaseSimulator):
         while True:
             self.clean_up()
 
-            CarlaDataProvider.set_client(self._client)
-            CarlaDataProvider.set_world(self._world)
-            CarlaDataProvider.set_traffic_manager_port(self._tm.get_port())
+            self._carla_interface.client = self._client
+            self._carla_interface.world = self._world
+            self._carla_interface.traffic_manager_port = self._tm.get_port()
 
             self._spawn_hero_vehicle(start_pos=start)
             self._prepare_observations()
@@ -245,7 +247,7 @@ class CarlaSimulator(BaseSimulator):
             self._spawn_vehicles()
             self._spawn_pedestrians()
 
-            CarlaDataProvider.on_carla_tick()
+            self._carla_interface.on_carla_tick()
             self.apply_planner(end)
 
             self._collided = False
@@ -291,9 +293,9 @@ class CarlaSimulator(BaseSimulator):
         self._world.set_weather(weather)
 
     def _spawn_hero_vehicle(self, start_pos: int = 0) -> None:
-        start_waypoint = CarlaDataProvider.get_spawn_point(start_pos)
+        start_waypoint = self._carla_interface.get_spawn_point(start_pos)
         self._start_location = start_waypoint.location
-        self._hero_actor = CarlaDataProvider.request_new_actor(VEHICLE_NAME, start_waypoint, ROLE_NAME)
+        self._hero_actor = self._carla_interface.request_new_actor(VEHICLE_NAME, start_waypoint, ROLE_NAME)
 
     def _spawn_vehicles(self) -> None:
         blueprints = self._blueprints.filter('vehicle.*')
@@ -327,7 +329,7 @@ class CarlaSimulator(BaseSimulator):
                 if self._verbose:
                     print('[SIMULATOR]', response.error)
             else:
-                CarlaDataProvider.register_actor(self._world.get_actor(response.actor_id))
+                self._carla_interface.register_actor(self._world.get_actor(response.actor_id))
 
     def _spawn_pedestrians(self) -> None:
         blueprints = self._blueprints.filter('walker.pedestrian.*')
@@ -405,8 +407,8 @@ class CarlaSimulator(BaseSimulator):
             walkers.extend(_walkers)
             walker_speed.extend(_walker_speed)
 
-        CarlaDataProvider.register_actors(self._world.get_actors(walkers))
-        # CarlaDataProvider.register_actors(self._world.get_actors(controllers))
+        self._carla_interface.register_actors(self._world.get_actors(walkers))
+        # self._carla_interface.register_actors(self._world.get_actors(controllers))
 
         # wait for a tick to ensure client receives the last transform of the walkers we have just created
         self._world.tick()
@@ -417,7 +419,7 @@ class CarlaSimulator(BaseSimulator):
 
         for i, controller_id in enumerate(controllers):
             controller = self._world.get_actor(controller_id)
-            #controller = CarlaDataProvider.get_actor_by_id(controller_id)
+            #controller = self._carla_interface.get_actor_by_id(controller_id)
             controller.start()
             controller.go_to_location(self._world.get_random_location_from_navigation())
             controller.set_max_speed(float(walker_speed[i]))
@@ -438,11 +440,31 @@ class CarlaSimulator(BaseSimulator):
             if obs_item.type == 'bev':
                 self._bev_wrapper = BeVWrapper(obs_item)
                 self._bev_wrapper.init(self._client, self._world, self._map, self._hero_actor)
-
+        # planner_cls = BasicPlanner()
+        # 配一个：_planner_cfg
+#         config = dict(
+    #     town='Town01',
+    #     weather='random',
+    #     sync_mode=True,
+    #     delta_seconds=0.1,
+    #     no_rendering=False,
+    #     auto_pilot=False,
+    #     n_vehicles=0,
+    #     n_pedestrians=0,
+    #     disable_two_wheels=False,
+    #     col_threshold=400,
+    #     resolution=1.0,
+    #     waypoint_num=20,
+    #     obs=list(),
+    #     planner=dict(),
+    #     aug=None,
+    #     verbose=True,
+    #     debug=False,
+    # )
         planner_cls = PLANNER_DICT[self._planner_cfg.get('type', 'basic')]
-        self._planner = planner_cls(self._planner_cfg)
+        self._planner = planner_cls(self._planner_cfg, self._carla_interface)
         self._collision_sensor = CollisionSensor(self._hero_actor, self._col_threshold)
-        self._traffic_light_helper = TrafficLightHelper(self._hero_actor)
+        self._traffic_light_helper = TrafficLightHelper(self._carla_interface, self._hero_actor)
 
     def _ready(self, ticks: int = 30) -> bool:
         for _ in range(ticks):
@@ -502,7 +524,7 @@ class CarlaSimulator(BaseSimulator):
             Dict: [description]
         """
         assert self._start_location is not None
-        self._end_location = CarlaDataProvider.get_spawn_point(end_idx).location
+        self._end_location = self._carla_interface.get_spawn_point(end_idx).location
         self._planner.set_destination(self._start_location, self._end_location, clean=True)
         self._total_distance = self._planner.distance_to_goal
         self._end_timeout = self._planner.timeout
@@ -515,13 +537,13 @@ class CarlaSimulator(BaseSimulator):
         :Returns:
             Dict: State dict.
         """
-        speed = CarlaDataProvider.get_speed(self._hero_actor) * 3.6
-        transform = CarlaDataProvider.get_transform(self._hero_actor)
+        speed = self._carla_interface.get_speed(self._hero_actor) * 3.6
+        transform = self._carla_interface.get_transform(self._hero_actor)
         location = transform.location
         forward_vector = transform.get_forward_vector()
-        acceleration = CarlaDataProvider.get_acceleration(self._hero_actor)
-        angular_velocity = CarlaDataProvider.get_angular_velocity(self._hero_actor)
-        velocity = CarlaDataProvider.get_speed_vector(self._hero_actor)
+        acceleration = self._carla_interface.get_acceleration(self._hero_actor)
+        angular_velocity = self._carla_interface.get_angular_velocity(self._hero_actor)
+        velocity = self._carla_interface.get_speed_vector(self._hero_actor)
 
         light_state = self._traffic_light_helper.active_light_state.value
         drive_waypoint = self._map.get_waypoint(
@@ -666,7 +688,7 @@ class CarlaSimulator(BaseSimulator):
         world_snapshot = self._world.get_snapshot()
         self._timestamp = world_snapshot.timestamp.elapsed_seconds
 
-        CarlaDataProvider.on_carla_tick()
+        self._carla_interface.on_carla_tick()
 
         if self._planner is not None:
             self._planner.run_step()
@@ -676,7 +698,7 @@ class CarlaSimulator(BaseSimulator):
         self._ran_light = self._traffic_light_helper.ran_light
 
         if self._bev_wrapper is not None:
-            if CarlaDataProvider._hero_vehicle_route is not None:
+            if self._carla_interface._hero_vehicle_route is not None:
                 self._bev_wrapper.tick()
 
     def apply_control(self, control: Dict = None) -> None:
@@ -722,7 +744,7 @@ class CarlaSimulator(BaseSimulator):
         self._end_distance = float('inf')
         self._end_timeout = float('inf')
 
-        CarlaDataProvider.clean_up()
+        self._carla_interface.clean_up()
         if self._debug:
             print('after')
             self._count_actors()

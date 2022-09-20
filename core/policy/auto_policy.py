@@ -5,6 +5,7 @@ from .base_carla_policy import BaseCarlaPolicy
 from core.models import VehiclePIDController, SteerNoiseWrapper, MPCController
 from ding.utils.default_helper import deep_merge_dicts
 from ding.torch_utils.data_helper import to_ndarray
+import carla
 
 DEFAULT_LATERAL_DICT = {'K_P': 1, 'K_D': 0.1, 'K_I': 0, 'dt': 0.1}
 DEFAULT_LONGITUDINAL_DICT = {'K_P': 1.0, 'K_D': 0, 'K_I': 0.05, 'dt': 0.1}
@@ -39,7 +40,7 @@ class AutoPIDPolicy(BaseCarlaPolicy):
         max_throttle=0.75,
         max_steer=0.8,
         # whether consider traffic light
-        ignore_light=False,
+        ignore_light=True,
         # whether consider speed limit provided by planner
         ignore_speed_limit=False,
         # traffic light distance threshold
@@ -68,6 +69,8 @@ class AutoPIDPolicy(BaseCarlaPolicy):
         super().__init__(cfg, enable_field=set(['collect', 'eval']))
         self._controller_dict = dict()
         self._last_steer_dict = dict()
+        # 附加的
+        # self._cfg = self.config
 
         self.target_speed = self._cfg.target_speed
         self._max_brake = self._cfg.max_brake
@@ -116,33 +119,40 @@ class AutoPIDPolicy(BaseCarlaPolicy):
 
     def _forward(self, data_id: int, obs: Dict) -> Dict:
         controller = self._controller_dict[data_id]
-        if obs['command'] == -1:
-            control = self._emergency_stop(data_id)
-        elif obs['agent_state'] == 2 or obs['agent_state'] == 3 or obs['agent_state'] == 5:
-            control = self._emergency_stop(data_id)
-        elif not self._ignore_traffic_light and obs['agent_state'] == 4:
-            control = self._emergency_stop(data_id)
-        elif not self._ignore_traffic_light and obs['tl_state'] in [0, 1] and obs['tl_dis'] < self._tl_threshold:
-            control = self._emergency_stop(data_id)
-        else:
-            current_speed = obs['speed']
-            current_location = obs['location']
-            current_vector = obs['forward_vector']
-            target_location = obs['target']
-            if not self._ignore_speed_limit:
-                target_speed = min(self.target_speed, obs['speed_limit'])
+        # control = carla.VehicleControl()
+        control = {'steer':0.0, 'throttle':0.0, 'brake':0.0}
+        try:
+            if 'command' in obs.keys() and obs['command'] == -1:
+                control = self._emergency_stop(data_id)
+            elif obs['agent_state'] == 2 or obs['agent_state'] == 3 or obs['agent_state'] == 5:
+                control = self._emergency_stop(data_id)
+            elif (not self._ignore_traffic_light) and obs['agent_state'] == 4:
+                control = self._emergency_stop(data_id)
+            # 暂时不看tl_state和_ignore_traffic_light和tl_dis
+            elif not self._ignore_traffic_light and obs['tl_state'] in [0, 1] and obs['tl_dis'] < self._tl_threshold:
+                control = self._emergency_stop(data_id)
             else:
-                target_speed = self.target_speed
-            control = controller.forward(
-                current_speed,
-                current_location,
-                current_vector,
-                target_speed,
-                target_location,
-            )
-            if abs(control['steer'] > 0.1 and current_speed > 15):
-                control['throttle'] = min(control['throttle'], 0.3)
-            self._last_steer_dict[data_id] = control['steer']
+                current_speed = obs['speed']
+                current_location = obs['location']
+                current_vector = obs['forward_vector']
+                target_location = obs['target']
+                if not self._ignore_speed_limit:
+                    target_speed = min(self.target_speed, obs['speed_limit'])
+                else:
+                    target_speed = self.target_speed
+                control = controller.forward(
+                    current_speed,
+                    current_location,
+                    current_vector,
+                    target_speed,
+                    target_location,
+                )
+                # print("control:",control)
+                if abs(control['steer'] > 0.1 and current_speed > 15):
+                    control['throttle'] = min(control['throttle'], 0.3)
+                self._last_steer_dict[data_id] = control['steer']
+        except Exception as e:
+            print("Exception in _forward:",e)
         return control
 
     def _emergency_stop(self, data_id: int) -> Dict:
@@ -239,7 +249,7 @@ class AutoMPCPolicy(BaseCarlaPolicy):
     config = dict(
         target_speed=25,
         mpc_args=None,
-        ignore_light=False,
+        ignore_light=True,
         ignore_speed_limit=False,
         horizon=5,
         fps=4,

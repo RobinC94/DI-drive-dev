@@ -5,7 +5,7 @@ __AUTHOR__ = "OpenDILab Contributors"
 __AUTHOR_EMAIL__ = "opendilab.contact@gmail.com"
 __version__ = __VERSION__
 
-SIMULATORS = ['carla', 'metadrive']
+SIMULATORS = ['carla']
 
 # if 'carla' in SIMULATORS:
 #     try:

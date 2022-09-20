@@ -6,8 +6,8 @@ from easydict import EasyDict
 from core.envs import CarlaEnvWrapper, ScenarioCarlaEnv
 from core.policy import AutoPIDPolicy
 from ding.utils import set_pkg_seed
-from core.simulators.srunner.tools.route_parser import RouteParser
-from core.simulators.srunner.tools.scenario_parser import ScenarioConfigurationParser
+from srunner.tools.route_parser import RouteParser
+from srunner.tools.scenario_parser import ScenarioConfigurationParser
 
 casezoo_config = dict(
     env=dict(
