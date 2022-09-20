@@ -8,7 +8,7 @@ from PIL import Image
 import numpy as np
 
 from core.data import CarlaBenchmarkCollector
-from core.envs import SimpleCarlaEnv, DriveEnvWrapper
+from core.envs import SimpleCarlaEnv, CarlaEnvWrapper
 from core.policy import AutoPIDPolicy
 from core.utils.others.tcp_helper import parse_carla_tcp
 from ding.envs import BaseEnvManager, SyncSubprocessEnvManager
@@ -16,7 +16,7 @@ from ding.utils.default_helper import deep_merge_dicts
 
 config = dict(
     env=dict(
-        env_num=1,
+        env_num=5,
         simulator=dict(
             disable_two_wheels=True,
             waypoint_num=32,
@@ -60,7 +60,7 @@ config = dict(
         wrapper=dict(),
     ),
     server=[
-        dict(carla_host='localhost', carla_ports=[2000, 2002, 2]),
+        dict(carla_host='localhost', carla_ports=[9000, 9010, 2]),
     ],
     policy=dict(
         target_speed=25,
@@ -94,18 +94,18 @@ def write_episode_data(episode_path, episode_data):
 
 
 def wrapped_env(env_cfg, wrapper_cfg, host, port, tm_port=None):
-    return DriveEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port), wrapper_cfg)
+    return CarlaEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port), wrapper_cfg)
 
 
 def main(cfg, seed=0):
-    cfg.env.manager = deep_merge_dicts(BaseEnvManager.default_config(), cfg.env.manager)
+    cfg.env.manager = deep_merge_dicts(SyncSubprocessEnvManager.default_config(), cfg.env.manager)
 
     tcp_list = parse_carla_tcp(cfg.server)
     env_num = cfg.env.env_num
     assert len(tcp_list) >= env_num, \
         "Carla server not enough! Need {} servers but only found {}.".format(env_num, len(tcp_list))
 
-    collector_env = BaseEnvManager(
+    collector_env = SyncSubprocessEnvManager(
         env_fn=[partial(wrapped_env, cfg.env, cfg.env.wrapper, *tcp_list[i]) for i in range(env_num)],
         cfg=cfg.env.manager,
     )

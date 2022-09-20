@@ -50,7 +50,7 @@ setup(
         'py-trees==0.8.3',
         'pygame',
         'torchvision',
-        'di-engine>0.3',
+        'di-engine>=0.3.1',
         'scikit-image',
         'setuptools==50',
         'shapely',
@@ -60,12 +60,12 @@ setup(
     ],
     extras_require={
         'doc': [
-            'protobuf<=3.20.1',
             'sphinx>=2.2.1',
             'sphinx_rtd_theme~=0.4.3',
             'enum_tools',
             'sphinx-toolbox',
-            'metadrive-simulator==0.2.4',
+            'recommonmark',
+            'metadrive-simulator',
         ],
         'test': [
             'pytest==5.1.1',

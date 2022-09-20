@@ -1,23 +1,24 @@
-eval
+core.eval
 ###########
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.eval
+
+.. automodule:: core.eval
 
 
 CarlaBenchmarkEvaluator
 =======================
-.. autoclass:: core.eval.CarlaBenchmarkEvaluator
+.. autoclass:: CarlaBenchmarkEvaluator
     :members:
 
 
 SingleCarlaEvaluator
 =======================
-.. autoclass:: core.eval.SingleCarlaEvaluator
+.. autoclass:: SingleCarlaEvaluator
     :members:
 
 
 SerialEvaluator
 ======================
-.. autoclass:: core.eval.SerialEvaluator
+.. autoclass:: SerialEvaluator
     :members:

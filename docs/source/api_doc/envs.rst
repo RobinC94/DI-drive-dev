@@ -1,45 +1,52 @@
-envs
+core.envs
 #################
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.envs
+
+.. automodule:: core.envs
 
 
 BaseDriveEnv
 ===============
-.. autoclass:: core.envs.BaseDriveEnv
+.. autoclass:: BaseDriveEnv
     :members: 
 
 
 SimpleCarlaEnv
 ===============
-.. autoclass:: core.envs.SimpleCarlaEnv
+.. autoclass:: SimpleCarlaEnv
     :members: 
 
 
 ScenarioCarlaEnv
 ========================
-.. autoclass:: core.envs.ScenarioCarlaEnv
+.. autoclass:: ScenarioCarlaEnv
     :members: 
 
 
 MetaDriveMacroEnv
 =====================
-.. autoclass:: core.envs.MetaDriveMacroEnv
+.. autoclass:: MetaDriveMacroEnv
 
 
 MetaDriveTrajEnv
 =====================
-.. autoclass:: core.envs.MetaDriveTrajEnv
+.. autoclass:: MetaDriveTrajEnv
 
 
-DriveEnvWrapper
+CarlaEnvWrapper
 =======================
-.. autoclass:: core.envs.DriveEnvWrapper
+.. autoclass:: CarlaEnvWrapper
     :members:
 
 
-BenchmarkEnvWrapper
+CarlaBenchmarkEnvWrapper
 ======================
-.. autoclass:: core.envs.BenchmarkEnvWrapper
+.. autoclass:: CarlaBenchmarkEnvWrapper
+    :members:
+
+
+MetaDriveEnvWrapper
+======================
+.. autoclass:: MetaDriveEnvWrapper
     :members:

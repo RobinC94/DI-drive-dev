@@ -1,8 +1,9 @@
-policy
-###########
+core.policy
+#############
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.policy
+
+.. automodule:: core.policy
 
 
 BaseCarlaPolicy
@@ -13,29 +14,29 @@ BaseCarlaPolicy
 
 AutoPIDPolicy
 ================
-.. autoclass:: core.policy.AutoPIDPolicy
+.. autoclass:: AutoPIDPolicy
     :members: _forward_collect, _forward_eval, _reset_collect, _reset_eval
 
 
 AutoMPCPolicy
 ================
-.. autoclass:: core.policy.AutoMPCPolicy
+.. autoclass:: AutoMPCPolicy
     :members: _forward_collect, _forward_eval, _reset_collect, _reset_eval
 
 
 CILRSPolicy
 =============
-.. autoclass:: core.policy.CILRSPolicy
+.. autoclass:: CILRSPolicy
     :members:
 
 
 LBCBirdviewPolicy
 ====================
-.. autoclass:: core.policy.LBCBirdviewPolicy
+.. autoclass:: LBCBirdviewPolicy
     :members: _forward_eval, _reset_eval
 
 
 LBCImagePolicy
 ====================
-.. autoclass:: core.policy.LBCImagePolicy
+.. autoclass:: LBCImagePolicy
     :members: _forward_eval, _reset_eval

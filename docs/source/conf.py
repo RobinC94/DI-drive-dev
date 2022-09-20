@@ -12,19 +12,25 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../..'))
-print(sys.path)
+from datetime import datetime
+from packaging import version as version_
 
+# Get current location
+_DOC_PATH = os.path.dirname(os.path.abspath(__file__))
+_PROJ_PATH = os.path.abspath(os.path.join(_DOC_PATH, '..', '..'))
+os.chdir(_PROJ_PATH)
 
 # -- Project information -----------------------------------------------------
+from core import __TITLE__, __AUTHOR__, __VERSION__
 
-project = 'DI-drive'
-copyright = '2021, OpenDILab'
-author = 'OpenDILab'
+project = __TITLE__
+copyright = '{year}, {author}'.format(year=datetime.now().year, author=__AUTHOR__)
+author = __AUTHOR__
 
+# The short X.Y version
+version = version_.parse(__VERSION__).base_version
 # The full version, including alpha/beta/rc tags
-version = '0.3.4'
-release = '0.3.4'
+release = __VERSION__
 
 
 # -- General configuration ---------------------------------------------------
@@ -39,6 +45,12 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
+    'sphinx.ext.todo',
+    'sphinx.ext.graphviz',
+    "sphinx.ext.coverage",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.autosummary",
+    "recommonmark",
 ]
 
 
@@ -72,7 +84,7 @@ exclude_patterns = []
 html_theme = 'sphinx_rtd_theme'
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'didrivedoc'
+htmlhelp_basename = 'di-drive_doc'
 
 
 # Add any paths that contain custom static files (such as style sheets) here,

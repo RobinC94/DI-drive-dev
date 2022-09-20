@@ -7,7 +7,7 @@ from ding.envs import SyncSubprocessEnvManager
 from ding.config import compile_config
 from ding.policy import PPOPolicy
 from ding.worker import SampleSerialCollector, InteractionSerialEvaluator, BaseLearner
-from core.envs import DriveEnvWrapper
+from core.envs import MetaDriveEnvWrapper
 from core.policy.traj_policy.traj_ppo import TrajPPO 
 from core.policy.traj_policy.traj_vac import ConvVAC
 from core.envs.md_traj_env import MetaDriveTrajEnv 
@@ -80,7 +80,7 @@ main_config = EasyDict(metadrive_basic_config)
 
 
 def wrapped_env(env_cfg, wrapper_cfg=None):
-    return DriveEnvWrapper(MetaDriveTrajEnv(config=env_cfg), wrapper_cfg)
+    return MetaDriveEnvWrapper(MetaDriveTrajEnv(config=env_cfg), wrapper_cfg)
 
 
 def main(cfg):

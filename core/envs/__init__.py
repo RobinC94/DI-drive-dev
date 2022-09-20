@@ -5,7 +5,7 @@ Description:
 from gym.envs.registration import register, registry
 from core import SIMULATORS
 from .base_drive_env import BaseDriveEnv
-from .drive_env_wrapper import DriveEnvWrapper, BenchmarkEnvWrapper
+from .env_wrapper import CarlaEnvWrapper, CarlaBenchmarkEnvWrapper, MetaDriveEnvWrapper
 
 envs = []
 env_map = {}

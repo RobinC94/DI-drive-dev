@@ -3,8 +3,8 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-DI-drive Documentation
-=========================
+Welcome to DI-drive Documentation!
+#####################################
 
 .. toctree::
     :maxdepth: 2
@@ -14,7 +14,7 @@ DI-drive Documentation
 
 Decision Intelligence Platform for Autonomous Driving simulation.
 
-Last updated on 2022.6.5
+Last updated on 2022.8.29
 
 -----
 
@@ -26,7 +26,7 @@ with **high ease of use** and **low difficulty to hands-on**.
 and supports `Carla <http://carla.org>`_ and `MetaDrive <https://decisionforce.github.io/metadrive>`_ simulator.
 
 Main features for **DI-drive**
-----------------------------------
+=================================
 
 - **AD Simulation**
    **DI-drive** provides unified and easily used interfaces to support all kinds of lightweight and complex driving simulators.
@@ -55,8 +55,7 @@ to check any part you need. It is recommended to first install **DI-drive** and 
 provided quick start guidence.
 
 Table of Contents
---------------------
-
+=================================
 
 .. toctree::
    :maxdepth: 2
@@ -90,3 +89,10 @@ Table of Contents
    :maxdepth: 1
 
    faq/index
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

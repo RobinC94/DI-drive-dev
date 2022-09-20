@@ -1,13 +1,14 @@
-models
+core.models
 ##############
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.models
+
+.. automodule:: core.models
 
 
 BEVSpeedConvEncoder
 =====================
-.. autoclass:: core.models.BEVSpeedConvEncoder
+.. autoclass:: BEVSpeedConvEncoder
     :members:
 
 
@@ -19,13 +20,13 @@ VanillaVAE
 
 VehiclePIDController
 =====================
-.. autoclass:: core.models.VehiclePIDController
+.. autoclass:: VehiclePIDController
     :members:
 
 
 MPCController
 ==================
-.. autoclass:: core.models.MPCController
+.. autoclass:: MPCController
     :members:
 
 

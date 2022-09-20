@@ -10,7 +10,7 @@ from easydict import EasyDict
 from tqdm import tqdm
 
 from core.data import CarlaBenchmarkCollector, BenchmarkDatasetSaver
-from core.envs import SimpleCarlaEnv, DriveEnvWrapper
+from core.envs import SimpleCarlaEnv, CarlaEnvWrapper
 from core.policy import AutoPIDPolicy
 from core.utils.others.tcp_helper import parse_carla_tcp
 
@@ -20,10 +20,8 @@ config = dict(
         simulator=dict(
             disable_two_wheels=True,
             planner=dict(
-                type='lbc',
+                type='behavior',
                 resolution=1,
-                threshold_before=7.5,
-                threshold_after=5.,
             ),
             obs=(
                 dict(
@@ -85,7 +83,7 @@ def lbc_postprocess(observations, *args):
 
 
 def wrapped_env(env_cfg, wrapper_cfg, host, port, tm_port=None):
-    return DriveEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port), wrapper_cfg)
+    return CarlaEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port), wrapper_cfg)
 
 
 def main(cfg, seed=0):

@@ -8,7 +8,7 @@ from ding.envs import BaseEnvManager, SyncSubprocessEnvManager
 from ding.config import compile_config
 from ding.policy import PPOPolicy
 from ding.worker import SampleSerialCollector, InteractionSerialEvaluator, BaseLearner
-from core.envs import DriveEnvWrapper
+from core.envs import MetaDriveEnvWrapper
 
 metadrive_basic_config = dict(
     exp_name='metadrive_basic_ppo',
@@ -48,12 +48,12 @@ main_config = EasyDict(metadrive_basic_config)
 
 def wrapped_train_env(env_cfg):
     env = gym.make("MetaDrive-1000envs-v0", config=env_cfg)
-    return DriveEnvWrapper(env)
+    return MetaDriveEnvWrapper(env)
 
 
 def wrapped_eval_env(env_cfg):
     env = gym.make("MetaDrive-validation-v0", config=env_cfg)
-    return DriveEnvWrapper(env)
+    return MetaDriveEnvWrapper(env)
 
 
 def main(cfg):

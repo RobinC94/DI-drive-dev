@@ -2,7 +2,7 @@ import os
 import torch
 from easydict import EasyDict
 
-from core.envs import BenchmarkEnvWrapper
+from core.envs import CarlaBenchmarkEnvWrapper
 from core.utils.others.tcp_helper import parse_carla_tcp
 from core.eval import SingleCarlaEvaluator
 from ding.policy import DQNPolicy
@@ -68,7 +68,7 @@ def main(cfg, seed=0):
     assert len(tcp_list) > 0, "No Carla server found!"
     host, port = tcp_list[0]
 
-    carla_env = BenchmarkEnvWrapper(CarlaLatentEvalEnv(cfg.env, host, port), cfg.env.wrapper)
+    carla_env = CarlaBenchmarkEnvWrapper(CarlaLatentEvalEnv(cfg.env, host, port), cfg.env.wrapper)
     carla_env.seed(seed)
     set_pkg_seed(seed)
     model = LatentDQNRLModel(**cfg.policy.model)

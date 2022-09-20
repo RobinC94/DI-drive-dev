@@ -1,19 +1,20 @@
-simulators
+core.simulators
 #################
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.simulators
+
+.. automodule:: core.simulators
 
 
 BaseSimulator
 ===============
-.. autoclass:: core.simulators.base_simulator.BaseSimulator
+.. autoclass:: core.simulators.carla_simulator.BaseSimulator
     :members:
 
 
 CarlaSimulator
 ===============
-.. autoclass:: core.simulators.CarlaSimulator
+.. autoclass:: CarlaSimulator
     :members:
 
 .. warning::
@@ -25,6 +26,6 @@ CarlaSimulator
 
 CarlaScenarioSimulator
 ========================
-.. autoclass:: core.simulators.CarlaScenarioSimulator
+.. autoclass:: CarlaScenarioSimulator
     :members:
 

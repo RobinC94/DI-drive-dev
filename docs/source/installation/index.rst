@@ -15,7 +15,7 @@ System version:
 
 Python version: 3.6, 3.7
 
-PyTorch version: >=1.4, <=1.8
+PyTorch version: >=1.4, <=1.10
 
 DI-engine version: >=0.3.1
 
@@ -112,7 +112,7 @@ To use Carla simulator you need to run a Carla server and use its IP host and po
 
 .. code:: bash
 
-    cd carla_099
+    cd carla_0910
     # Ubuntu
     ./CarlaUE4.sh --carla-world-port=N
     # Windows

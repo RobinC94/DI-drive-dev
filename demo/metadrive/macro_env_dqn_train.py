@@ -9,7 +9,7 @@ from ding.config import compile_config
 from ding.policy import DQNPolicy
 from ding.worker import SampleSerialCollector, InteractionSerialEvaluator, BaseLearner, AdvancedReplayBuffer
 from ding.rl_utils import get_epsilon_greedy_fn
-from core.envs import DriveEnvWrapper, MetaDriveMacroEnv
+from core.envs import MetaDriveEnvWrapper, MetaDriveMacroEnv
 
 metadrive_macro_config = dict(
     exp_name='metadrive_macro_dqn',
@@ -64,7 +64,7 @@ main_config = EasyDict(metadrive_macro_config)
 
 
 def wrapped_env(env_cfg, wrapper_cfg=None):
-    return DriveEnvWrapper(MetaDriveMacroEnv(env_cfg), wrapper_cfg)
+    return MetaDriveEnvWrapper(MetaDriveMacroEnv(env_cfg), wrapper_cfg)
 
 
 def main(cfg):

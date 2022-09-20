@@ -1,8 +1,9 @@
-utils
+core.utils
 ############
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.utils
+
+.. automodule:: core.utils
 
 
 BasicPlanner

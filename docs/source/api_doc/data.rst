@@ -1,17 +1,18 @@
-data
+core.data
 ##################
 
-.. toctree::
-    :maxdepth: 2
+.. currentmodule:: core.data
+
+.. automodule:: core.data
 
 
 CarlaBenchmarkCollector
 =======================
-.. autoclass:: core.data.carla_benchmark_collector.CarlaBenchmarkCollector
+.. autoclass:: CarlaBenchmarkCollector
     :members:
 
 
 BenchmarkDatasetSaver
 =======================
-.. autoclass:: core.data.benchmark_dataset_saver.BenchmarkDatasetSaver
+.. autoclass:: BenchmarkDatasetSaver
     :members:

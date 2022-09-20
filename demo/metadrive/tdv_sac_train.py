@@ -8,7 +8,7 @@ from ding.envs import BaseEnvManager, SyncSubprocessEnvManager
 from ding.config import compile_config
 from ding.policy import SACPolicy
 from ding.worker import SampleSerialCollector, InteractionSerialEvaluator, BaseLearner, NaiveReplayBuffer
-from core.envs import DriveEnvWrapper
+from core.envs import MetaDriveEnvWrapper
 from demo.metadrive.model import ConvQAC
 
 metadrive_basic_config = dict(
@@ -57,7 +57,7 @@ main_config = EasyDict(metadrive_basic_config)
 
 
 def wrapped_env(env_cfg, wrapper_cfg=None):
-    return DriveEnvWrapper(TopDownMetaDrive(config=env_cfg), wrapper_cfg)
+    return MetaDriveEnvWrapper(TopDownMetaDrive(config=env_cfg), wrapper_cfg)
 
 
 def main(cfg):

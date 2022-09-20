@@ -13,7 +13,7 @@ for example *town1* represents all commonly used suites in 'town1'.
 
 Carla benchmark setting is widely used in other literature as training and evaluation standard.
 DI-drive allows users to quickly build up an environment with a benchmark suite setting by deploying
-:class:`BenchmarkEnvWrapper <core.envs.carla_env_wrapper.BenchmarkEnvWrapper>`. Once an environment is wrapped, it will ignore
+:class:`CarlaBenchmarkEnvWrapper <core.envs.carla_env_wrapper.CarlaBenchmarkEnvWrapper>`. Once an environment is wrapped, it will ignore
 the passed arguments in ``reset`` method, and choose one from the suite's route list according to configuration. It can be used
 in RL training, to sampling data in benchmark environment settings.
 

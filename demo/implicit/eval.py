@@ -3,7 +3,7 @@ import argparse
 from easydict import EasyDict
 from functools import partial
 
-from core.envs import SimpleCarlaEnv, DriveEnvWrapper
+from core.envs import SimpleCarlaEnv, CarlaEnvWrapper
 from eval_policy import ImplicitPolicy
 from core.utils.others.tcp_helper import parse_carla_tcp
 from core.eval import CarlaBenchmarkEvaluator
@@ -13,7 +13,7 @@ from ding.utils.default_helper import deep_merge_dicts
 
 eval_config = dict(
     env=dict(
-        env_num=1,
+        env_num=5,
         simulator=dict(
             verbose=False,
             planner=dict(type='basic', resolution=2.0, min_distance=1.5),
@@ -37,7 +37,7 @@ eval_config = dict(
         ),
     ),
     server=[
-        dict(carla_host='localhost', carla_ports=[2000, 2002, 2]),
+        dict(carla_host='localhost', carla_ports=[9000, 9010, 2]),
     ],
     eval=dict(
         episodes_per_suite=50,
@@ -50,7 +50,7 @@ main_config = EasyDict(eval_config)
 
 
 def wrapped_env(env_cfg, host, port, tm_port=None):
-    return DriveEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port))
+    return CarlaEnvWrapper(SimpleCarlaEnv(env_cfg, host, port, tm_port))
 
 
 def main(cfg, policy_cfg, seed=0):

@@ -6,7 +6,7 @@ from easydict import EasyDict
 import copy
 from tensorboardX import SummaryWriter
 
-from core.envs import SimpleCarlaEnv, BenchmarkEnvWrapper
+from core.envs import SimpleCarlaEnv, CarlaBenchmarkEnvWrapper
 from core.utils.others.tcp_helper import parse_carla_tcp
 from core.eval import SerialEvaluator
 from ding.envs import SyncSubprocessEnvManager, BaseEnvManager
@@ -27,12 +27,12 @@ from core.utils.others.ding_utils import read_ding_config
 
 def wrapped_discrete_env(env_cfg, wrapper_cfg, host, port, tm_port=None):
     env = SimpleCarlaEnv(env_cfg, host, port, tm_port)
-    return BenchmarkEnvWrapper(DiscreteEnvWrapper(env), wrapper_cfg)
+    return CarlaBenchmarkEnvWrapper(DiscreteEnvWrapper(env), wrapper_cfg)
 
 
 def wrapped_continuous_env(env_cfg, wrapper_cfg, host, port, tm_port=None):
     env = SimpleCarlaEnv(env_cfg, host, port, tm_port)
-    return BenchmarkEnvWrapper(ContinuousEnvWrapper(env), wrapper_cfg)
+    return CarlaBenchmarkEnvWrapper(ContinuousEnvWrapper(env), wrapper_cfg)
 
 
 def get_cfg(args):
