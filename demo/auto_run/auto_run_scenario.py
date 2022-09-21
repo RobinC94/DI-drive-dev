@@ -143,12 +143,12 @@ casezoo_config = dict(
 
 main_config = EasyDict(casezoo_config)
 
-def get_control(steer, throttle, brake):
-    control = carla.VehicleControl()
-    control.steer = float(steer)
-    control.throttle = float(throttle)
-    control.brake = float(brake)
-    return control
+# def get_control(steer, throttle, brake):
+#     control = carla.VehicleControl()
+#     control.steer = float(steer)
+#     control.throttle = float(throttle)
+#     control.brake = float(brake)
+#     return control
 
 def get_vehicle_control(actions):
     control = carla.VehicleControl()
@@ -202,15 +202,12 @@ def main(args, cfg):
         config = route_indexer.next(index)
         index += 1
         obs = env.reset(config)
-        action=get_control(0, 0.75, 0)
-        # print(obs.keys())
         auto_policy.reset([0])
         while env._running:
             if "rgb" in obs.keys() and obs['rgb'] is not None:
                 show_image(obs['rgb'])
             actions = auto_policy.forward({0: obs})
             action = get_vehicle_control(actions[0]['action'])
-            # print("action:", action)
             obs, reward, done, info = env.step(action)
         env.close() 
 
@@ -237,4 +234,3 @@ if __name__ == "__main__":
     args.port = 2000
 
     main(args, main_config)
-    # "test for git push"

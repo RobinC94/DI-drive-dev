@@ -511,6 +511,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
                 done=not self._running
                 info={}
                 self.action=action
+                # print("action:", action)
 
                 self.ego_vehicles[0].apply_control(self.action)
                 self._adjust_world_transform()
