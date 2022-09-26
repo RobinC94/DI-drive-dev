@@ -282,7 +282,6 @@ class CarlaInterface(object):
             else:
                 raise KeyError("Traffic light '{}' already registered. Cannot register twice!".format(traffic_light.id))
 
-    
     def annotate_trafficlight_in_group(self, traffic_light: carla.Actor) -> Dict:
         """
         Get dictionary with traffic light group info for a given traffic light
@@ -318,7 +317,6 @@ class CarlaInterface(object):
 
         return dict_annotations
 
-    
     def get_trafficlight_trigger_location(self, traffic_light: carla.Actor) -> carla.Vector3D:  # pylint: disable=invalid-name
         """
         Calculates the yaw of the waypoint that represents the trigger volume of the traffic light
@@ -343,7 +341,6 @@ class CarlaInterface(object):
 
         return carla.Location(point_location.x, point_location.y, point_location.z)
 
-    
     def update_light_states(
             self,
             ego_light: carla.Actor,
@@ -386,7 +383,6 @@ class CarlaInterface(object):
 
         return reset_params
 
-    
     def reset_lights(self, reset_params: List) -> None:
         """
         Reset traffic lights
@@ -397,7 +393,6 @@ class CarlaInterface(object):
             param['light'].set_red_time(param['red_time'])
             param['light'].set_yellow_time(param['yellow_time'])
 
-    
     def get_next_traffic_light(self, actor: carla.Actor, use_cached_location: bool = True) -> carla.Actor:
         """
         returns the next relevant traffic light for the provided actor
@@ -434,8 +429,7 @@ class CarlaInterface(object):
 
         return relevant_traffic_light
 
-    
-    def is_light_red(self, 
+    def is_light_red(self,
                      vehicle: carla.Actor,
                      proximity_tlight_threshold: float = 10.0) -> Tuple[bool, Optional[carla.Actor]]:
         """
@@ -479,7 +473,6 @@ class CarlaInterface(object):
 
         return (False, None)
 
-    
     def get_next_traffic_light_from_waypoint(self, waypoint: carla.Waypoint) -> carla.Actor:
         # Create list of all waypoints until next intersection
         list_of_waypoints = []
@@ -506,18 +499,18 @@ class CarlaInterface(object):
 
         return relevant_traffic_light
 
-    
     def set_hero_vehicle_route(self, route: List) -> None:
         """
         Set the route of the ego vehicle
         """
         self._hero_vehicle_route = route
+
     def set_ego_vehicle_route(self, route: List) -> None:
         """
         Set the route of the ego vehicle
         """
         self._hero_vehicle_route = route
-    
+
     def get_hero_vehicle_route(self) -> List:
         """
         returns the currently set route of the ego vehicle
@@ -525,7 +518,6 @@ class CarlaInterface(object):
         """
         return self._hero_vehicle_route
 
-    
     def get_ego_vehicle_route(self) -> List:
         """
         returns the currently set route of the ego vehicle
@@ -535,7 +527,6 @@ class CarlaInterface(object):
             return convert_waypoint_to_transform(self._hero_vehicle_route)
         return None
 
-    
     def _generate_spawn_points(self):
         """
         Generate spawn points for the current map
@@ -546,14 +537,12 @@ class CarlaInterface(object):
             self._available_points.add(i)
         self._spawn_points = spawn_points
 
-    
     def get_spawn_point(self, index: int) -> carla.Vector3D:
         """
         Get spawn point from index
         """
         return self._spawn_points[index]
 
-    
     def create_blueprint(
             self,
             model: str,
@@ -631,7 +620,6 @@ class CarlaInterface(object):
 
         return blueprint
 
-    
     def request_new_actor(
             self,
             model: str,
@@ -687,7 +675,6 @@ class CarlaInterface(object):
 
         return actor
 
-    
     def request_new_batch_actors(
             self,
             model: str,
@@ -735,9 +722,8 @@ class CarlaInterface(object):
 
             if spawn_point:
                 batch.append(
-                    SpawnActor(blueprint, spawn_point).then(
-                        SetAutopilot(FutureActor, autopilot, self._traffic_manager_port)
-                    )
+                    SpawnActor(blueprint,
+                               spawn_point).then(SetAutopilot(FutureActor, autopilot, self._traffic_manager_port))
                 )
 
         actors = self.handle_actor_batch(batch)
@@ -752,7 +738,6 @@ class CarlaInterface(object):
             self.register_actor(actor)
         return actors
 
-    
     def handle_actor_batch(self, batch: List) -> Optional[List]:
         """
         Forward a CARLA command batch to spawn actors to CARLA, and gather the responses.
@@ -786,7 +771,6 @@ class CarlaInterface(object):
 
         return actors
 
-    
     def is_vehicle_hazard(self,
                           vehicle: carla.Actor,
                           proximity_vehicle_threshold: float = 10.0) -> Tuple[bool, Optional[carla.Actor]]:
@@ -819,8 +803,8 @@ class CarlaInterface(object):
 
         return (False, None)
 
-    
-    def is_junction_vehicle_hazard(self, vehicle: carla.Actor, command: RoadOption) -> Tuple[bool, Optional[carla.Actor]]:
+    def is_junction_vehicle_hazard(self, vehicle: carla.Actor,
+                                   command: RoadOption) -> Tuple[bool, Optional[carla.Actor]]:
         """
         :Arguments:
             - vehicle: Potential obstacle to check
@@ -879,7 +863,6 @@ class CarlaInterface(object):
                 return (True, target_vehicle)
         return (False, None)
 
-    
     def is_lane_vehicle_hazard(self, vehicle: carla.Actor, command: RoadOption) -> Tuple[bool, Optional[carla.Actor]]:
         """
         :Arguments:
@@ -907,13 +890,9 @@ class CarlaInterface(object):
         else:
             lft_shift += 1
 
-        lft_lane_wp = self.rotate_point(
-            carla.Vector3D(lft_shift * lane_width, 0.0, location_w1.z), yaw_w1 + 90
-        )
+        lft_lane_wp = self.rotate_point(carla.Vector3D(lft_shift * lane_width, 0.0, location_w1.z), yaw_w1 + 90)
         lft_lane_wp = location_w1 + carla.Location(lft_lane_wp)
-        rgt_lane_wp = self.rotate_point(
-            carla.Vector3D(rgt_shift * lane_width, 0.0, location_w1.z), yaw_w1 - 90
-        )
+        rgt_lane_wp = self.rotate_point(carla.Vector3D(rgt_shift * lane_width, 0.0, location_w1.z), yaw_w1 - 90)
         rgt_lane_wp = location_w1 + carla.Location(rgt_lane_wp)
 
         for target_vehicle in vehicle_list:
@@ -925,9 +904,7 @@ class CarlaInterface(object):
             p2 = self.get_location(target_vehicle)
             x2 = target_vehicle.bounding_box.extent.x
             p2_hat = p2 - self.get_transform(target_vehicle).get_forward_vector() * x2 * 2
-            s2 = self.get_speed_vector(
-                target_vehicle
-            ) + self.get_transform(target_vehicle).get_forward_vector() * x2
+            s2 = self.get_speed_vector(target_vehicle) + self.get_transform(target_vehicle).get_forward_vector() * x2
             s2_value = max(12, 2 + 2 * x2 + 3.0 * self.get_speed(target_vehicle))
 
             distance = p1.distance(p2)
@@ -955,7 +932,6 @@ class CarlaInterface(object):
                 return (True, target_vehicle)
         return (False, None)
 
-    
     def is_bike_hazard(self, vehicle: carla.Actor) -> Tuple[bool, Optional[carla.Actor]]:
         """
         :Arguments:
@@ -1005,7 +981,6 @@ class CarlaInterface(object):
 
         return (False, None)
 
-    
     def is_walker_hazard(self, vehicle: carla.Actor) -> Tuple[bool, Optional[carla.Actor]]:
         """
         :Arguments:
@@ -1036,7 +1011,6 @@ class CarlaInterface(object):
                 return (True, walker)
         return (False, None)
 
-    
     def is_vehicle_crossing_future(self, p1, s1, lft_lane, rgt_lane):
         p1_hat = carla.Location(x=p1.x + 3 * s1.x, y=p1.y + 3 * s1.y)
         line1 = shapely.geometry.LineString([(p1.x, p1.y), (p1_hat.x, p1_hat.y)])
@@ -1044,7 +1018,6 @@ class CarlaInterface(object):
         inter = line1.intersection(line2)
         return not inter.is_empty
 
-    
     def get_actors(self) -> List:
         """
         Return list of actors and their ids
@@ -1052,14 +1025,12 @@ class CarlaInterface(object):
         """
         return iteritems(self._carla_actor_pool)
 
-    
     def get_actor_list(self) -> List:
         """
         Return all actors in world
         """
         return self._world.get_actors()
 
-    
     def actor_id_exists(self, actor_id: int) -> bool:
         """
         Check if a certain id is still at the simulation
@@ -1069,7 +1040,6 @@ class CarlaInterface(object):
 
         return False
 
-    
     def get_hero_actor(self) -> Optional[carla.Actor]:
         """
         Get the actor object of the hero actor if it exists, returns none otherwise.
@@ -1079,7 +1049,6 @@ class CarlaInterface(object):
                 return self._carla_actor_pool[actor_id]
         return None
 
-    
     def get_actor_by_id(self, actor_id: int) -> Optional[carla.Actor]:
         """
         Get an actor from the pool by using its ID. If the actor
@@ -1091,7 +1060,6 @@ class CarlaInterface(object):
         print("WARNING: Non-existing actor id {}".format(actor_id))
         return None
 
-    
     def remove_actor_by_id(self, actor_id: int) -> None:
         """
         Remove an actor from the pool using its ID

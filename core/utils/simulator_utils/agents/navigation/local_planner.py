@@ -2,7 +2,6 @@
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
-
 """ This module contains a local planner to perform low-level waypoint following based on PID controllers. """
 
 from enum import Enum
@@ -102,16 +101,8 @@ class LocalPlanner(object):
         self._max_brake = 0.3
         self._max_throt = 0.75
         self._max_steer = 0.8
-        args_lateral_dict = {
-            'K_P': 1.95,
-            'K_D': 0.2,
-            'K_I': 0.07,
-            'dt': self._dt}
-        args_longitudinal_dict = {
-            'K_P': 1.0,
-            'K_D': 0,
-            'K_I': 0.05,
-            'dt': self._dt}
+        args_lateral_dict = {'K_P': 1.95, 'K_D': 0.2, 'K_I': 0.07, 'dt': self._dt}
+        args_longitudinal_dict = {'K_P': 1.0, 'K_D': 0, 'K_I': 0.05, 'dt': self._dt}
 
         # parameters overload
         if opt_dict:
@@ -134,12 +125,14 @@ class LocalPlanner(object):
                 self._max_steer = opt_dict['max_steering']
 
         self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
-        self._vehicle_controller = VehiclePIDController(self._vehicle,
-                                                        args_lateral=args_lateral_dict,
-                                                        args_longitudinal=args_longitudinal_dict,
-                                                        max_throttle=self._max_throt,
-                                                        max_brake=self._max_brake,
-                                                        max_steering=self._max_steer,)
+        self._vehicle_controller = VehiclePIDController(
+            self._vehicle,
+            args_lateral=args_lateral_dict,
+            args_longitudinal=args_longitudinal_dict,
+            max_throttle=self._max_throt,
+            max_brake=self._max_brake,
+            max_steering=self._max_steer,
+        )
 
         self._global_plan = False
 
@@ -182,11 +175,9 @@ class LocalPlanner(object):
                 road_option = RoadOption.LANEFOLLOW
             else:
                 # random choice between the possible options
-                road_options_list = _retrieve_options(
-                    next_waypoints, last_waypoint)
+                road_options_list = _retrieve_options(next_waypoints, last_waypoint)
                 road_option = random.choice(road_options_list)
-                next_waypoint = next_waypoints[road_options_list.index(
-                    road_option)]
+                next_waypoint = next_waypoints[road_options_list.index(road_option)]
 
             self._waypoints_queue.append((next_waypoint, road_option))
 
@@ -209,8 +200,7 @@ class LocalPlanner(object):
         self._waypoint_buffer.clear()
         for _ in range(self._buffer_size):
             if self._waypoints_queue:
-                self._waypoint_buffer.append(
-                    self._waypoints_queue.popleft())
+                self._waypoint_buffer.append(self._waypoints_queue.popleft())
             else:
                 break
 
@@ -243,8 +233,7 @@ class LocalPlanner(object):
         if not self._waypoint_buffer:
             for _ in range(self._buffer_size):
                 if self._waypoints_queue:
-                    self._waypoint_buffer.append(
-                        self._waypoints_queue.popleft())
+                    self._waypoint_buffer.append(self._waypoints_queue.popleft())
                 else:
                     break
 
@@ -278,6 +267,7 @@ class LocalPlanner(object):
         :return: boolean
         """
         return len(self._waypoints_queue) == 0 and len(self._waypoint_buffer) == 0
+
 
 def _retrieve_options(list_waypoints, current_waypoint):
     """

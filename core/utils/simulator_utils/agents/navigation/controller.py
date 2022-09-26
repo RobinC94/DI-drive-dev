@@ -2,7 +2,6 @@
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
-
 """ This module contains PID controllers to perform lateral and longitudinal control. """
 
 from collections import deque
@@ -18,7 +17,6 @@ class VehiclePIDController():
     (lateral and longitudinal) to perform the
     low level control a vehicle from client side
     """
-
 
     def __init__(self, vehicle, args_lateral, args_longitudinal, max_throttle=0.75, max_brake=0.3, max_steering=0.8):
         """
@@ -93,7 +91,6 @@ class PIDLongitudinalController():
     PIDLongitudinalController implements longitudinal control using a PID.
     """
 
-
     def __init__(self, vehicle, K_P=1.0, K_D=0.0, K_I=0.0, dt=0.03):
         """
         Constructor method.
@@ -147,6 +144,7 @@ class PIDLongitudinalController():
 
         return np.clip((self._k_p * error) + (self._k_d * _de) + (self._k_i * _ie), -1.0, 1.0)
 
+
 class PIDLateralController():
     """
     PIDLateralController implements lateral control using a PID.
@@ -190,15 +188,14 @@ class PIDLateralController():
             :return: steering control in the range [-1, 1]
         """
         v_begin = vehicle_transform.location
-        v_end = v_begin + carla.Location(x=math.cos(math.radians(vehicle_transform.rotation.yaw)),
-                                         y=math.sin(math.radians(vehicle_transform.rotation.yaw)))
+        v_end = v_begin + carla.Location(
+            x=math.cos(math.radians(vehicle_transform.rotation.yaw)),
+            y=math.sin(math.radians(vehicle_transform.rotation.yaw))
+        )
 
         v_vec = np.array([v_end.x - v_begin.x, v_end.y - v_begin.y, 0.0])
-        w_vec = np.array([waypoint.transform.location.x -
-                          v_begin.x, waypoint.transform.location.y -
-                          v_begin.y, 0.0])
-        _dot = math.acos(np.clip(np.dot(w_vec, v_vec) /
-                                 (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
+        w_vec = np.array([waypoint.transform.location.x - v_begin.x, waypoint.transform.location.y - v_begin.y, 0.0])
+        _dot = math.acos(np.clip(np.dot(w_vec, v_vec) / (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
 
         _cross = np.cross(v_vec, w_vec)
 

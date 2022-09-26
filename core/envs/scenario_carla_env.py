@@ -13,23 +13,16 @@ import signal
 import py_trees
 
 import carla
-from core.utils.env_utils.carla_data_provider_expand import CarlaDataProviderExpand
-from core.utils.planner.basic_planner import  AutoPIDPlanner
-from core.utils.simulator_utils.sensor_utils import CollisionSensor
-# from core.utils.simulator_utils.sensor_utils import TrafficLightHelper
+from core.utils.planner.basic_planner import AutoPIDPlanner
+from core.utils.simulator_utils.srunner_utils import interpolate_trajectory_didrive, VoidAgent
 
 from srunner.scenariomanager.traffic_events import TrafficEventType
 from srunner.scenarios.route_scenario import convert_transform_to_location
 from srunner.tools.route_parser import RouteParser
-from team_code.planner import RoutePlanner
 from leaderboard.utils.route_manipulation import downsample_route, interpolate_trajectory
 from .base_drive_env import BaseDriveEnv
 
 import sys
-# sys.path.insert(0,'/home/wuche/sense-lab/xad')
-# sys.path.insert(0,'/home/wuche/sense-lab/DI-drive-dev/leaderboard_package')
-# sys.path.insert(0,'/home/wuche/sense-lab/DI-drive-dev/scenario_runner')
-
 
 from leaderboard.utils.statistics_manager import StatisticsManager
 from leaderboard.utils.result_writer import ResultOutputProvider
@@ -39,7 +32,6 @@ from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
 from leaderboard.scenarios.route_scenario import RouteScenario
 from core.utils.simulator_utils.sensor_helper import SensorHelper
-from core.simulators.carla_interface import CarlaInterface
 
 sensors_to_icons = {
     'sensor.camera.rgb':        'carla_camera',
@@ -53,13 +45,14 @@ sensors_to_icons = {
     'sensor.opendrive_map':     'carla_opendrive_map',
     'sensor.speedometer':       'carla_speedometer',
     'sensor.other.collision':   'carla_collision'
-    
 }
 PENALTY_COLLISION_PEDESTRIAN = 0.50
 PENALTY_COLLISION_VEHICLE = 0.60
 PENALTY_COLLISION_STATIC = 0.65
 PENALTY_TRAFFIC_LIGHT = 0.70
 PENALTY_STOP = 0.80
+
+
 def compute_route_length(config):
     trajectory = config.trajectory
 
@@ -67,15 +60,19 @@ def compute_route_length(config):
     previous_location = None
     for location in trajectory:
         if previous_location:
-            dist = math.sqrt((location.x-previous_location.x)*(location.x-previous_location.x) +
-                             (location.y-previous_location.y)*(location.y-previous_location.y) +
-                             (location.z - previous_location.z) * (location.z - previous_location.z))
+            dist = math.sqrt(
+                (location.x - previous_location.x) * (location.x - previous_location.x) +
+                (location.y - previous_location.y) * (location.y - previous_location.y) +
+                (location.z - previous_location.z) * (location.z - previous_location.z)
+            )
             route_length += dist
         previous_location = location
 
     return route_length
 
+
 class RouteRecord():
+
     def __init__(self):
         self.route_id = None
         self.index = None
@@ -92,44 +89,20 @@ class RouteRecord():
             'vehicle_blocked': []
         }
 
-        self.scores = {
-            'score_route': 0,
-            'score_penalty': 0,
-            'score_composed': 0
-        }
+        self.scores = {'score_route': 0, 'score_penalty': 0, 'score_composed': 0}
 
         self.meta = {}
+
 
 class ScenarioCarlaEnv(BaseDriveEnv):
 
     config = dict(
         obs=[],
-        # record='',
-        # resume=False,
         timeout=60.0,
         debug=False,
     )
 
-    _planner_cfg = dict(
-            # town='Town01',
-            # weather='random',
-            # sync_mode=True,
-            # delta_seconds=0.1,
-            # no_rendering=False,
-            # auto_pilot=False,
-            # n_vehicles=0,
-            # n_pedestrians=0,
-            # disable_two_wheels=False,
-            # col_threshold=400,
-            # resolution=1.0,
-            # waypoint_num=20,
-            # obs=list(),
-            # planner=dict(),
-            # aug=None,
-            # verbose=True,
-            # debug=False,
-        )
-
+    _planner_cfg = dict()
 
     action_space = spaces.Dict({})
     observation_space = spaces.Dict({})
@@ -137,7 +110,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
     # Tunable parameters
     _client_timeout = 10.0  # in seconds
-    _frame_rate = 20.0      # in Hz
+    _frame_rate = 20.0  # in Hz
 
     def __init__(
             self,
@@ -172,20 +145,9 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         self._timestamp = 0
 
     def _load_planner(self):
-        world_annotations = RouteParser.parse_annotations_file(self._config.scenario_file)
-        gps_route, route = interpolate_trajectory(self.world, self._config.trajectory)
-        potential_scenarios_definitions, _ = RouteParser.scan_route_for_scenarios(self._config.town, route, world_annotations)
-        self.route = route
-        CarlaDataProvider.set_ego_vehicle_route(convert_transform_to_location(self.route))
-
+        gps_route, route = interpolate_trajectory_didrive(self.world, self._config.trajectory)
         self._planner = AutoPIDPlanner(self._planner_cfg, CarlaDataProvider)
-        _start_location = list(CarlaDataProvider.get_map(CarlaDataProvider._world).get_spawn_points())[0].location
-
-        _end_location = list(CarlaDataProvider.get_map(CarlaDataProvider._world).get_spawn_points())[1].location
-        self._planner.set_route(self.route)
-
-        self._planner.set_destination(_start_location, _end_location, clean=True)
-        
+        self._planner.set_route(route, clean=True)
 
     def _load_and_wait_for_world(self, town):
         """
@@ -218,8 +180,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             self.world.wait_for_tick()
 
         if CarlaDataProvider.get_map().name != town:
-            raise Exception("The CARLA server uses the wrong map!"
-                            "This scenario requires to use map {}".format(town))
+            raise Exception("The CARLA server uses the wrong map!" "This scenario requires to use map {}".format(town))
 
     def set_global_plan(self, global_plan_gps, global_plan_world_coord):
         """
@@ -229,21 +190,23 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         self._global_plan_world_coord = [(global_plan_world_coord[x][0], global_plan_world_coord[x][1]) for x in ds_ids]
         self._global_plan = [global_plan_gps[x] for x in ds_ids]
 
-
-
     def _prepare_ego_vehicles(self, config):
         """
         Spawn or update the ego vehicles
         """
-        wait_for_ego_vehicles=False
-        self.ego_vehicles=config.ego_vehicles
+        wait_for_ego_vehicles = False
+        self.ego_vehicles = config.ego_vehicles
         if not wait_for_ego_vehicles:
             for vehicle in self.ego_vehicles:
-                self.ego_vehicles.append(CarlaDataProvider.request_new_actor(vehicle.model,
-                                                                                vehicle.transform,
-                                                                                vehicle.rolename,
-                                                                                color=vehicle.color,
-                                                                                vehicle_category=vehicle.category))
+                self.ego_vehicles.append(
+                    CarlaDataProvider.request_new_actor(
+                        vehicle.model,
+                        vehicle.transform,
+                        vehicle.rolename,
+                        color=vehicle.color,
+                        vehicle_category=vehicle.category
+                    )
+                )
         else:
             ego_vehicle_missing = True
             while ego_vehicle_missing:
@@ -272,7 +235,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         self._statistics_manager.set_scenario(route_scenario.scenario)
         self.route_record = RouteRecord()
 
-
         # Night mode
         if config.weather.sun_altitude_angle < 0.0:
             for vehicle in route_scenario.ego_vehicles:
@@ -280,7 +242,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         # if arguments.record:
         #     self.client.start_recorder("{}/{}_rep{}.log".format(arguments.record, config.name, config.repetition_index))
 
-        ### 5.Load scenario and run it
+        ## 5.Load scenario and run it
         #load_scenario(route_scenario, agent_instance, config.repetition_index)
         GameTime.restart()
 
@@ -316,19 +278,19 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             if self.scenario is not None:
                 self.scenario.terminate()
             self._analyze_scenario()
-    
+
     def _analyze_scenario(self):
         """
         Analyzes and prints the results of the route
         """
-        global_result = '\033[92m'+'SUCCESS'+'\033[0m'
+        global_result = '\033[92m' + 'SUCCESS' + '\033[0m'
         # print("self.scenario.get_criteria():",self.scenario.get_criteria())
         for criterion in self.scenario.get_criteria():
             if criterion.test_status != "SUCCESS":
-                global_result = '\033[91m'+'FAILURE'+'\033[0m'
+                global_result = '\033[91m' + 'FAILURE' + '\033[0m'
         # print("global_result:",global_result)
         if self.scenario.timeout_node.timeout:
-            global_result = '\033[91m'+'FAILURE'+'\033[0m'
+            global_result = '\033[91m' + 'FAILURE' + '\033[0m'
         # 数据都在global_result里面
         ResultOutputProvider(self, global_result)
 
@@ -341,10 +303,9 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         reward = {
             "score_composed": score_composed,
             "score_route": score_route,
-            "score_penalty": score_penalty,           
+            "score_penalty": score_penalty,
         }
         return reward
-
 
     def compute_reward(self, duration_time_system=-1, duration_time_game=-1, failure=""):
         """
@@ -382,7 +343,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
                         elif event.get_type() == TrafficEventType.COLLISION_PEDESTRIAN:
                             score_penalty *= PENALTY_COLLISION_PEDESTRIAN
                             # route_record.infractions['collisions_pedestrian'].append(event.get_message())
-                            
+
                         elif event.get_type() == TrafficEventType.COLLISION_VEHICLE:
                             score_penalty *= PENALTY_COLLISION_VEHICLE
                             # route_record.infractions['collisions_vehicle'].append(event.get_message())
@@ -421,7 +382,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         # update route scores
         self.route_record.scores['score_route'] = score_route
         self.route_record.scores['score_penalty'] = score_penalty
-        self.route_record.scores['score_composed'] = max(score_route*score_penalty, 0.0)
+        self.route_record.scores['score_composed'] = max(score_route * score_penalty, 0.0)
 
         # update status
         if target_reached:
@@ -433,68 +394,16 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
         # return route_record
 
-    def get_obs(self, obs_dict):
-        # ego_vehicle_speed_vector = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
-        # for k, v in obs.items():
-        #     if v is None:
-        #         return {}
-        obs = {}
-        try:
-            state = obs_dict["state"]
-            navigation = obs_dict["navigation"]
-            sensor_data = obs_dict["sensor_data"]
-            information = obs_dict["information"]
-            obs = dict()
-            # obs_dict = {
-            #     'speed':None,
-            #     'location':None,
-            #     'forward_vector':None,
-            #     'target':None,
-            #     'speed_limit':None,
-            #     'command':None,
-            #     'obs':None,
-            #     'agent_state':None
-            # }
-            obs.update(sensor_data)
-            obs.update(
-            {
-                'tick': information['tick'],
-                'timestamp': np.float32(information['timestamp']),
-                'agent_state': navigation['agent_state'],
-                'node': navigation['node'],
-                'node_forward': navigation['node_forward'],
-                'target': np.float32(navigation['target']),
-                'target_forward': np.float32(navigation['target_forward']),
-                'command': navigation['command'],
-                'speed': np.float32(state['speed']),
-                'speed_limit': np.float32(navigation['speed_limit']),
-                'location': np.float32(state['location']),
-                'forward_vector': np.float32(state['forward_vector']),
-                'acceleration': np.float32(state['acceleration']),
-                'velocity': np.float32(state['velocity']),
-                'angular_velocity': np.float32(state['angular_velocity']),
-                'rotation': np.float32(state['rotation']),
-                'is_junction': np.float32(state['is_junction']),
-                # 'tl_state': state['tl_state'],
-                # 'tl_dis': np.float32(state['tl_dis']),
-                'waypoint_list': navigation['waypoint_list'],
-                'direction_list': navigation['direction_list'],
-            }
-        )
-            # obs_dict['speed'] = obs["navigation"]["current_speed"]
-            # obs_dict['command'] = obs["navigation"]["command"]
-            # obs_dict['location'] = obs["navigation"]["node"]
-            # obs_dict['forward_vector'] = obs["navigation"]["target_forward"]
-            # obs_dict['speed_limit'] = obs["navigation"]["speed_limit"]
-            # obs_dict['target'] = obs["navigation"]["target"]
-            obs['rgb'] = sensor_data["rgb"]
-            # obs_dict['agent_state'] = obs["agent_state"]
-
-
-        except Exception as e:
-            print(e)
-
-        return obs
+    def _get_vehicle_control(self, actions):
+        control = carla.VehicleControl()
+        if actions:
+            if 'steer' in actions:
+                control.steer = float(actions['steer'])
+            if 'throttle' in actions:
+                control.throttle = float(actions['throttle'])
+            if 'brake' in actions:
+                control.brake = float(actions['brake'])
+        return control
 
     def step(self, action=None):
         try:
@@ -505,13 +414,10 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             # self._collided = self._collision_sensor.collided
             if timestamp and self._running:
                 obs = self.get_observation()
-                obs = self.get_obs(obs)
-                # print("obs:",obs)
-                reward=self.get_reward()
-                done=not self._running
-                info={}
-                self.action=action
-                # print("action:", action)
+                reward = self.get_reward()['score_composed']
+                done = not self._running
+                info = {}
+                self.action = self._get_vehicle_control(action)
 
                 self.ego_vehicles[0].apply_control(self.action)
                 self._adjust_world_transform()
@@ -532,6 +438,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             #     self.client.stop_recorder()
 
             self.close()
+            raise e
         return obs, reward, done, info
 
     def get_information(self) -> Dict:
@@ -554,17 +461,16 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         sensor_data = self._sensor_helper.get_sensors_data()
 
         for k, v in sensor_data.items():
-            if v is None or len(v)==0:
+            if v is None or len(v) == 0:
                 return {}
-
 
         speed = CarlaDataProvider.get_velocity(self.ego_vehicles[0]) * 3.6
         transform = CarlaDataProvider.get_transform(self.ego_vehicles[0])
         location = transform.location
         forward_vector = transform.get_forward_vector()
-        acceleration = CarlaDataProviderExpand.get_acceleration(self.ego_vehicles[0])
-        angular_velocity = CarlaDataProviderExpand.get_angular_velocity(self.ego_vehicles[0])
-        velocity = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
+        # acceleration = CarlaDataProviderExpand.get_acceleration(self.ego_vehicles[0])
+        # angular_velocity = CarlaDataProviderExpand.get_angular_velocity(self.ego_vehicles[0])
+        # velocity = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
 
         # light_state = self._traffic_light_helper.active_light_state.value
         drive_waypoint = CarlaDataProvider._map.get_waypoint(
@@ -577,7 +483,9 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             self._off_road = False
         else:
             self._off_road = True
-        lane_waypoint = CarlaDataProvider._map.get_waypoint(location, project_to_road=True, lane_type=carla.LaneType.Driving)
+        lane_waypoint = CarlaDataProvider._map.get_waypoint(
+            location, project_to_road=True, lane_type=carla.LaneType.Driving
+        )
         lane_location = lane_waypoint.transform.location
         lane_forward_vector = lane_waypoint.transform.rotation.get_forward_vector()
 
@@ -585,9 +493,9 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             'speed': speed,
             'location': np.array([location.x, location.y, location.z]),
             'forward_vector': np.array([forward_vector.x, forward_vector.y]),
-            'acceleration': np.array([acceleration.x, acceleration.y, acceleration.z]),
-            'velocity': np.array([velocity.x, velocity.y, velocity.z]),
-            'angular_velocity': np.array([angular_velocity.x, angular_velocity.y, angular_velocity.z]),
+            # 'acceleration': np.array([acceleration.x, acceleration.y, acceleration.z]),
+            # 'velocity': np.array([velocity.x, velocity.y, velocity.z]),
+            # 'angular_velocity': np.array([angular_velocity.x, angular_velocity.y, angular_velocity.z]),
             'rotation': np.array([transform.rotation.pitch, transform.rotation.yaw, transform.rotation.roll]),
             'is_junction': is_junction,
             'lane_location': np.array([lane_location.x, lane_location.y]),
@@ -604,10 +512,12 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
         navigation = self.get_navigation()
         information = self.get_information()
-        
+
         obs = {}
-        obs.update({"sensor_data": sensor_data, "navigation": navigation, 
-         "state": state, "information": information})
+        obs.update(sensor_data)
+        obs.update(navigation)
+        obs.update(state)
+        obs.update(information)
 
         return obs
 
@@ -615,66 +525,63 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         navigation = {}
         if not self._planner:
             return navigation
-        try:
-            command = self._planner.node_road_option
-            node_location = self._planner.node_waypoint.transform.location
-            node_forward = self._planner.node_waypoint.transform.rotation.get_forward_vector()
-            target_location = self._planner.target_waypoint.transform.location
-            target_forward = self._planner.target_waypoint.transform.rotation.get_forward_vector()
-            waypoint_list = self._planner.get_waypoints_list(20)
-            direction_list = self._planner.get_direction_list(20)
-            agent_state = self._planner.agent_state
-            speed_limit = self._planner.speed_limit
-            self._end_distance = self._planner.distance_to_goal
-            self._end_timeout = self._planner.timeout
+        command = self._planner.node_road_option
+        node_location = self._planner.node_waypoint.transform.location
+        node_forward = self._planner.node_waypoint.transform.rotation.get_forward_vector()
+        target_location = self._planner.target_waypoint.transform.location
+        target_forward = self._planner.target_waypoint.transform.rotation.get_forward_vector()
+        waypoint_list = self._planner.get_waypoints_list(20)
+        direction_list = self._planner.get_direction_list(20)
+        agent_state = self._planner.agent_state
+        speed_limit = self._planner.speed_limit
+        self._end_distance = self._planner.distance_to_goal
+        self._end_timeout = self._planner.timeout
 
-            waypoint_location_list = []
-            for wp in waypoint_list:
-                wp_loc = wp.transform.location
-                wp_vec = wp.transform.rotation.get_forward_vector()
-                waypoint_location_list.append([wp_loc.x, wp_loc.y, wp_vec.x, wp_vec.y])
+        waypoint_location_list = []
+        for wp in waypoint_list:
+            wp_loc = wp.transform.location
+            wp_vec = wp.transform.rotation.get_forward_vector()
+            waypoint_location_list.append([wp_loc.x, wp_loc.y, wp_vec.x, wp_vec.y])
 
-            if not self._off_road:
-                current_waypoint = self._planner.current_waypoint
-                node_waypoint = self._planner.node_waypoint
+        if not self._off_road:
+            current_waypoint = self._planner.current_waypoint
+            node_waypoint = self._planner.node_waypoint
 
-                # Lanes and roads are too chaotic at junctions
-                if current_waypoint.is_junction or node_waypoint.is_junction:
-                    self._wrong_direction = False
+            # Lanes and roads are too chaotic at junctions
+            if current_waypoint.is_junction or node_waypoint.is_junction:
+                self._wrong_direction = False
+            else:
+                node_yaw = node_waypoint.transform.rotation.yaw % 360
+                cur_yaw = current_waypoint.transform.rotation.yaw % 360
+
+                wp_angle = (node_yaw - cur_yaw) % 360
+
+                if 150 <= wp_angle <= (360 - 150):
+                    self._wrong_direction = True
                 else:
-                    node_yaw = node_waypoint.transform.rotation.yaw % 360
-                    cur_yaw = current_waypoint.transform.rotation.yaw % 360
+                    # Changing to a lane with the same direction
+                    self._wrong_direction = False
 
-                    wp_angle = (node_yaw - cur_yaw) % 360
-
-                    if 150 <= wp_angle <= (360 - 150):
-                        self._wrong_direction = True
-                    else:
-                        # Changing to a lane with the same direction
-                        self._wrong_direction = False
-
-            navigation = {
-                'agent_state': agent_state.value,
-                'command': command.value,
-                'node': np.array([node_location.x, node_location.y]),
-                'node_forward': np.array([node_forward.x, node_forward.y]),
-                'target': np.array([target_location.x, target_location.y]),
-                'target_forward': np.array([target_forward.x, target_forward.y]),
-                'waypoint_list': np.array(waypoint_location_list),
-                'speed_limit': np.array(speed_limit),
-                'direction_list': np.array(direction_list)
-            }
-        except Exception as e:
-            print("exception:", e)
+        navigation = {
+            'agent_state': agent_state.value,
+            'command': command.value,
+            'node': np.array([node_location.x, node_location.y]),
+            'node_forward': np.array([node_forward.x, node_forward.y]),
+            'target': np.array([target_location.x, target_location.y]),
+            'target_forward': np.array([target_forward.x, target_forward.y]),
+            'waypoint_list': np.array(waypoint_location_list),
+            'speed_limit': np.array(speed_limit),
+            'direction_list': np.array(direction_list)
+        }
 
         return navigation
 
     def reset(self, config) -> Any:
         self._config = config
+        self._config.agent = VoidAgent()
         try:
             while True:
                 self._statistics_manager.set_route(config.name, config.index)
-
 
                 self._load_and_wait_for_world(config.town)
                 self._prepare_ego_vehicles(config)
@@ -693,7 +600,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             self.entry_status = "Crashed"
 
             self.close()
-        return self.get_observation()  
+        return self.get_observation()
 
     def close(self):
         try:
@@ -705,7 +612,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
                 settings.fixed_delta_seconds = None
                 self.world.apply_settings(settings)
                 self._traffic_manager.set_synchronous_mode(False)
-
 
             print("\033[1m> Stopping the route\033[0m")
             self._stop_scenario()
@@ -742,7 +648,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
            bool: False if watchdog exception occured, True otherwise
         """
         return self._watchdog.get_status()
-    
+
     def _tick_carla_world(self):
         try:
             world = CarlaDataProvider.get_world()
@@ -758,7 +664,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
                     self._watchdog.update()
                     GameTime.on_carla_tick(timestamp)
                     CarlaDataProvider.on_carla_tick()
-                    CarlaDataProviderExpand.on_carla_tick()
+                    #CarlaDataProviderExpand.on_carla_tick()
         except Exception as e:
             # The scenario is wrong -> set the ejecution to crashed and stop
             print("\n\033[91m Terminated:")
@@ -775,8 +681,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
     def _adjust_world_transform(self):
         if self._cfg.debug:
             print("\n")
-            py_trees.display.print_ascii_tree(
-                self.scenario_tree, show_status=True)
+            py_trees.display.print_ascii_tree(self.scenario_tree, show_status=True)
             sys.stdout.flush()
         # print("self.scenario_tree.status：",self.scenario_tree.status)
         self.scenario_tree.tick_once()
@@ -784,12 +689,13 @@ class ScenarioCarlaEnv(BaseDriveEnv):
             self._running = False
 
         try:
-        # 调整carla_world视角
+            # 调整carla_world视角
             spectator = CarlaDataProvider.get_world().get_spectator()
             ego_trans = self.ego_vehicles[0].get_transform()
-            spectator.set_transform(carla.Transform(ego_trans.location + carla.Location(z=50),
-                                                        carla.Rotation(pitch=-90)))
-                # if self._running and getself._running_status():
+            spectator.set_transform(
+                carla.Transform(ego_trans.location + carla.Location(z=50), carla.Rotation(pitch=-90))
+            )
+            # if self._running and getself._running_status():
             if self._running and self._get_running_status():
                 CarlaDataProvider.get_world().tick()
         except Exception as e:
@@ -805,11 +711,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
     def _ready(self, ticks: int = 30) -> bool:
         for _ in range(ticks):
-            control = carla.VehicleControl()
-            control.steer = float(0)
-            control.throttle = float(0)
-            control.brake = float(0)
-            self.step(control)
+            self.step()
             self.get_observation()
         # print("ready!!!!!!!")
         self._tick = 0
@@ -820,3 +722,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
     @property
     def collided(self) -> bool:
         return self._collided
+
+    @property
+    def running(self) -> bool:
+        return self._running

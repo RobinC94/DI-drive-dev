@@ -12,7 +12,6 @@ from easydict import EasyDict
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from core.simulators.carla_interface import CarlaInterface
 from ding.utils.default_helper import deep_merge_dicts
 
 DEFAULT_CAMERA_CONFIG = {
@@ -247,6 +246,7 @@ class SensorHelper(object):
     #    }
 
     #     return state
+
 
 # 自己写的：解析img, lidar, gnss
 class CallBack(object):

@@ -3,11 +3,11 @@ from collections import deque
 
 import numpy as np
 
-
 DEBUG = int(os.environ.get("HAS_DISPLAY", 0))
 
 
 class Plotter(object):
+
     def __init__(self, size):
         self.size = size
         self.clear()
@@ -37,6 +37,7 @@ class Plotter(object):
 
 
 class RoutePlanner(object):
+
     def __init__(self, min_distance, max_distance, debug_size=256):
         self.route = deque()
         self.min_distance = min_distance
@@ -77,9 +78,7 @@ class RoutePlanner(object):
             if cumulative_distance > self.max_distance:
                 break
 
-            cumulative_distance += np.linalg.norm(
-                self.route[i][0] - self.route[i - 1][0]
-            )
+            cumulative_distance += np.linalg.norm(self.route[i][0] - self.route[i - 1][0])
             distance = np.linalg.norm(self.route[i][0] - gps)
 
             if distance <= self.min_distance and distance > farthest_in_range:
@@ -105,7 +104,5 @@ class RoutePlanner(object):
     def get_future_waypoints(self, num=10):
         res = []
         for i in range(min(num, len(self.route))):
-            res.append(
-                [self.route[i][0][0], self.route[i][0][1], self.route[i][1].value]
-            )
+            res.append([self.route[i][0][0], self.route[i][0][1], self.route[i][1].value])
         return res

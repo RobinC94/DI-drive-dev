@@ -2,7 +2,6 @@
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
-
 """ This module implements an agent that roams around a track following random
 waypoints and avoiding other vehicles.
 The agent also responds to traffic lights. """
@@ -14,6 +13,7 @@ from enum import Enum
 
 import carla
 from core.utils.simulator_utils.agents.tools.misc import is_within_distance_ahead, is_within_distance, compute_distance
+
 
 class AgentState(Enum):
     """
@@ -99,8 +99,7 @@ class Agent(object):
             if dot_ve_wp < 0:
                 continue
 
-            if is_within_distance_ahead(object_waypoint.transform,
-                                        self._vehicle.get_transform(),
+            if is_within_distance_ahead(object_waypoint.transform, self._vehicle.get_transform(),
                                         self._proximity_tlight_threshold):
                 if traffic_light.state == carla.TrafficLightState.Red:
                     return (True, traffic_light)
@@ -111,6 +110,7 @@ class Agent(object):
         """
         Calculates the yaw of the waypoint that represents the trigger volume of the traffic light
         """
+
         def rotate_point(point, radians):
             """
             rotate a given point by a given angle
@@ -130,8 +130,9 @@ class Agent(object):
 
         return carla.Location(point_location.x, point_location.y, point_location.z)
 
-    def _bh_is_vehicle_hazard(self, ego_wpt, ego_loc, vehicle_list,
-                           proximity_th, up_angle_th, low_angle_th=0, lane_offset=0):
+    def _bh_is_vehicle_hazard(
+        self, ego_wpt, ego_loc, vehicle_list, proximity_th, up_angle_th, low_angle_th=0, lane_offset=0
+    ):
         """
         Check if a given vehicle is an obstacle in our way. To this end we take
         into account the road and lane the target vehicle is on and run a
@@ -178,9 +179,8 @@ class Agent(object):
                         target_wpt.lane_id != next_wpt.lane_id + lane_offset:
                     continue
 
-            if is_within_distance(target_vehicle_loc, ego_loc,
-                                  self._vehicle.get_transform().rotation.yaw,
-                                  proximity_th, up_angle_th, low_angle_th):
+            if is_within_distance(target_vehicle_loc, ego_loc, self._vehicle.get_transform().rotation.yaw, proximity_th,
+                                  up_angle_th, low_angle_th):
 
                 return (True, target_vehicle, compute_distance(target_vehicle_loc, ego_loc))
 
@@ -210,13 +210,11 @@ class Agent(object):
                     target_vehicle_waypoint.lane_id != ego_vehicle_waypoint.lane_id:
                 continue
 
-            if is_within_distance_ahead(target_vehicle.get_transform(),
-                                        self._vehicle.get_transform(),
+            if is_within_distance_ahead(target_vehicle.get_transform(), self._vehicle.get_transform(),
                                         self._proximity_vehicle_threshold):
                 return (True, target_vehicle)
 
         return (False, None)
-
 
     @staticmethod
     def emergency_stop():

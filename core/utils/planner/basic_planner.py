@@ -25,8 +25,11 @@ class AgentState(Enum):
     BLOCKED_BY_WALKER = 3
     BLOCKED_RED_LIGHT = 4
     BLOCKED_BY_BIKE = 5
+
+
 def _orientation(yaw):
     return np.float32([np.cos(np.radians(yaw)), np.sin(np.radians(yaw))])
+
 
 def _numpy(carla_vector, normalize=False):
     result = np.float32([carla_vector.x, carla_vector.y])
@@ -35,6 +38,7 @@ def _numpy(carla_vector, normalize=False):
         return result / (np.linalg.norm(result) + 1e-4)
 
     return result
+
 
 class AutoPIDPlanner(object):
     """
@@ -102,9 +106,7 @@ class AutoPIDPlanner(object):
         self._grp = GlobalRoutePlanner(GlobalRoutePlannerDAO(self._map, self._resolution))
         self._grp.setup()
 
-    def set_destination(
-            self, start_location, end_location, clean: bool = False
-    ) -> None:
+    def set_destination(self, start_location, end_location, clean: bool = False) -> None:
         """
         This method creates a route of a list of waypoints from start location to destination location
         based on the route traced by the global router. If ``clean`` is set true, it will clean current
@@ -128,7 +130,6 @@ class AutoPIDPlanner(object):
             self._route += new_route
         # print("self._route:", self._route)
         self._carla_interface.set_ego_vehicle_route(self._route)
-
 
         prev_loc = None
         for elem in new_route:
@@ -167,13 +168,10 @@ class AutoPIDPlanner(object):
         self.end_waypoint = self._route[-1][0]
 
         # self._carla_interface.set_hero_vehicle_route(self._route)
-        # print("route:", route)
-        # print("type(route[0]):", type(route[0]))
         prev_loc = None
         for elem in route:
             self._waypoints_queue.append(elem)
-            # cur_loc = elem[0].transform.location
-            cur_loc = elem[0].location
+            cur_loc = elem[0].transform.location
             if prev_loc is not None:
                 delta = cur_loc.distance(prev_loc)
                 self.distance_to_goal += delta
@@ -268,18 +266,13 @@ class AutoPIDPlanner(object):
         # print("vehicle_state:", vehicle_state)
         # print("vehicle:", vehicle)
         if not vehicle_state:
-            vehicle_state, vehicle = self.is_lane_vehicle_hazard(
-                self._hero_vehicle, self.target_road_option
-            )
+            vehicle_state, vehicle = self.is_lane_vehicle_hazard(self._hero_vehicle, self.target_road_option)
             # print("vehicle: ",vehicle,"lane_vehicle_hazard vehicle_state:", vehicle_state)
 
         if not vehicle_state:
             # print("is_junction_vehicle_hazard")
-            vehicle_state, vehicle = self.is_junction_vehicle_hazard(
-                self._hero_vehicle, self.target_road_option
-            )
+            vehicle_state, vehicle = self.is_junction_vehicle_hazard(self._hero_vehicle, self.target_road_option)
             # print("vehicle: ",vehicle,",junction_vehicle_hazard vehicle_state:", vehicle_state)
-
 
         if vehicle_state:
             if self._debug:
@@ -323,9 +316,7 @@ class AutoPIDPlanner(object):
         print('WARNING: {}.get_speed: {} not found!'.format(__name__, actor))
         return -1
 
-    def is_light_red(self, 
-                     vehicle: carla.Actor,
-                     proximity_tlight_threshold: float = 10.0):
+    def is_light_red(self, vehicle: carla.Actor, proximity_tlight_threshold: float = 10.0):
         """
         Method to check if there is a red light affecting us. This version of
         the method is compatible with both European and US style traffic lights.
@@ -390,7 +381,6 @@ class AutoPIDPlanner(object):
         point_location = area_loc + carla.Location(x=point.x, y=point.y)
 
         return carla.Location(point_location.x, point_location.y, point_location.z)
-
 
     def is_walker_hazard(self, vehicle: carla.Actor):
         """
@@ -535,8 +525,7 @@ class AutoPIDPlanner(object):
 
         return collides, p1 + x[0] * v1
 
-    def is_vehicle_hazard(self, _carla_interface, vehicle: carla.Actor,
-                          proximity_vehicle_threshold: float = 10.0):
+    def is_vehicle_hazard(self, _carla_interface, vehicle: carla.Actor, proximity_vehicle_threshold: float = 10.0):
         vehicle_list = self.get_actor_list().filter("*vehicle*")
         vehicle_location = self.get_location(vehicle)
         vehicle_waypoint = self._map.get_waypoint(vehicle_location)
@@ -586,13 +575,9 @@ class AutoPIDPlanner(object):
         else:
             lft_shift += 1
 
-        lft_lane_wp = self.rotate_point(
-            carla.Vector3D(lft_shift * lane_width, 0.0, location_w1.z), yaw_w1 + 90
-        )
+        lft_lane_wp = self.rotate_point(carla.Vector3D(lft_shift * lane_width, 0.0, location_w1.z), yaw_w1 + 90)
         lft_lane_wp = location_w1 + carla.Location(lft_lane_wp)
-        rgt_lane_wp = self.rotate_point(
-            carla.Vector3D(rgt_shift * lane_width, 0.0, location_w1.z), yaw_w1 - 90
-        )
+        rgt_lane_wp = self.rotate_point(carla.Vector3D(rgt_shift * lane_width, 0.0, location_w1.z), yaw_w1 - 90)
         rgt_lane_wp = location_w1 + carla.Location(rgt_lane_wp)
 
         for target_vehicle in vehicle_list:
@@ -652,7 +637,6 @@ class AutoPIDPlanner(object):
     #     print('WARNING: {}.get_speed: {} not found!'.format(__name__, actor))
     #     return None
 
-    
     def rotate_point(self, point, angle):
         """
         rotate a given point by a given angle
@@ -660,7 +644,7 @@ class AutoPIDPlanner(object):
         x_ = math.cos(math.radians(angle)) * point.x - math.sin(math.radians(angle)) * point.y
         y_ = math.sin(math.radians(angle)) * point.x + math.cos(math.radians(angle)) * point.y
         return carla.Vector3D(x_, y_, point.z)
-        
+
     def get_actor_list(self) -> List:
         """
         Return all actors in world
@@ -741,7 +725,6 @@ class AutoPIDPlanner(object):
         cfg = EasyDict(cls.config)
         cfg.cfg_type = cls.__name__ + 'Config'
         return copy.deepcopy(cfg)
-
 
 
 class BasicPlanner(object):
@@ -1061,4 +1044,3 @@ class BasicPlanner(object):
         cfg = EasyDict(cls.config)
         cfg.cfg_type = cls.__name__ + 'Config'
         return copy.deepcopy(cfg)
-

@@ -5,12 +5,12 @@
 #
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
-
 """ Module with auxiliary functions. """
 
 import math
 import numpy as np
 import carla
+
 
 def draw_waypoints(world, waypoints, z=0.5):
     """
@@ -39,6 +39,7 @@ def get_speed(vehicle):
 
     return 3.6 * math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
 
+
 def is_within_distance_ahead(target_transform, current_transform, max_distance):
     """
     Check if a target object is within a certain distance in front of a reference object.
@@ -49,7 +50,12 @@ def is_within_distance_ahead(target_transform, current_transform, max_distance):
     :param max_distance: maximum allowed distance
     :return: True if target object is within max_distance ahead of the reference object
     """
-    target_vector = np.array([target_transform.location.x - current_transform.location.x, target_transform.location.y - current_transform.location.y])
+    target_vector = np.array(
+        [
+            target_transform.location.x - current_transform.location.x,
+            target_transform.location.y - current_transform.location.y
+        ]
+    )
     norm_target = np.linalg.norm(target_vector)
 
     # If the vector is too short, we can simply stop here
@@ -64,6 +70,7 @@ def is_within_distance_ahead(target_transform, current_transform, max_distance):
     d_angle = math.degrees(math.acos(np.clip(np.dot(forward_vector, target_vector) / norm_target, -1., 1.)))
 
     return d_angle < 90.0
+
 
 def is_within_distance(target_location, current_location, orientation, max_distance, d_angle_th_up, d_angle_th_low=0):
     """
@@ -88,8 +95,7 @@ def is_within_distance(target_location, current_location, orientation, max_dista
     if norm_target > max_distance:
         return False
 
-    forward_vector = np.array(
-        [math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
+    forward_vector = np.array([math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
     d_angle = math.degrees(math.acos(np.clip(np.dot(forward_vector, target_vector) / norm_target, -1., 1.)))
 
     return d_angle_th_low < d_angle < d_angle_th_up

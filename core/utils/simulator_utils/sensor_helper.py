@@ -16,7 +16,6 @@ from ding.utils.default_helper import deep_merge_dicts
 from srunner.scenariomanager.timer import GameTime
 
 
-
 def get_random_sample(range_list):
     res = []
     for _range in range_list:

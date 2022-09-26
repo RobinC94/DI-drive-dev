@@ -440,27 +440,6 @@ class CarlaSimulator(BaseSimulator):
             if obs_item.type == 'bev':
                 self._bev_wrapper = BeVWrapper(obs_item)
                 self._bev_wrapper.init(self._client, self._world, self._map, self._hero_actor)
-        # planner_cls = BasicPlanner()
-        # 配一个：_planner_cfg
-#         config = dict(
-    #     town='Town01',
-    #     weather='random',
-    #     sync_mode=True,
-    #     delta_seconds=0.1,
-    #     no_rendering=False,
-    #     auto_pilot=False,
-    #     n_vehicles=0,
-    #     n_pedestrians=0,
-    #     disable_two_wheels=False,
-    #     col_threshold=400,
-    #     resolution=1.0,
-    #     waypoint_num=20,
-    #     obs=list(),
-    #     planner=dict(),
-    #     aug=None,
-    #     verbose=True,
-    #     debug=False,
-    # )
         planner_cls = PLANNER_DICT[self._planner_cfg.get('type', 'basic')]
         self._planner = planner_cls(self._planner_cfg, self._carla_interface)
         self._collision_sensor = CollisionSensor(self._hero_actor, self._col_threshold)

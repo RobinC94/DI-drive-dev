@@ -13,6 +13,7 @@ from core.utils.env_utils.stuck_detector import StuckDetector
 from core.utils.simulator_utils.carla_utils import lane_mid_distance
 from core.simulators import CarlaSimulator
 
+
 class SimpleCarlaEnv(BaseDriveEnv):
     """
     A simple deployment of Carla Environment with single hero vehicle. It use ``CarlaSimulator`` to interact with

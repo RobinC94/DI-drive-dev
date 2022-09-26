@@ -36,7 +36,16 @@ setup(
     keywords='DL RL AD Platform',
     packages=[
         *find_packages(include=('core', 'core.*')),
+        *find_packages(where='scenario_runner', include=('srunner', 'srunner.*')),
+        *find_packages(where='core/utils/simulator_utils', include=('agents', 'agents.*')),
+        *find_packages(where='leaderboard', include=('leaderboard', 'leaderboard.*')),
     ],
+    package_dir={
+        "core": "./core",
+        "srunner": "./scenario_runner/srunner",
+        "leaderboard": "./leaderboard/leaderboard",
+        "agents": "./core/utils/simulator_utils/agents",
+    },
     python_requires=">=3.6",
     install_requires=[
         'ephem',
@@ -57,6 +66,7 @@ setup(
         'terminaltables',
         'tqdm',
         'xmlschema',
+        'simple-watchdog-timer',
     ],
     extras_require={
         'doc': [
