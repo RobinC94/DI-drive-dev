@@ -6,32 +6,25 @@ from gym import spaces
 import numpy as np
 import os
 from easydict import EasyDict
-import os
 import time
 import traceback
-import signal
 import py_trees
 
 import carla
-from core.utils.planner.basic_planner import AutoPIDPlanner
+from core.utils.planner.scenario_planner import ScenarioPlanner
 from core.utils.simulator_utils.srunner_utils import interpolate_trajectory_didrive, VoidAgent
+from .base_drive_env import BaseDriveEnv
+from core.utils.simulator_utils.sensor_helper import SensorHelper
 
 from srunner.scenariomanager.traffic_events import TrafficEventType
-from srunner.scenarios.route_scenario import convert_transform_to_location
-from srunner.tools.route_parser import RouteParser
-from leaderboard.utils.route_manipulation import downsample_route, interpolate_trajectory
-from .base_drive_env import BaseDriveEnv
-
-import sys
-
-from leaderboard.utils.statistics_manager import StatisticsManager
-from leaderboard.utils.result_writer import ResultOutputProvider
-
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
+from leaderboard.utils.route_manipulation import downsample_route
+from leaderboard.utils.statistics_manager import StatisticsManager
+from leaderboard.utils.result_writer import ResultOutputProvider
 from leaderboard.scenarios.route_scenario import RouteScenario
-from core.utils.simulator_utils.sensor_helper import SensorHelper
+
 
 sensors_to_icons = {
     'sensor.camera.rgb':        'carla_camera',
@@ -146,7 +139,7 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
     def _load_planner(self):
         gps_route, route = interpolate_trajectory_didrive(self.world, self._config.trajectory)
-        self._planner = AutoPIDPlanner(self._planner_cfg, CarlaDataProvider)
+        self._planner = ScenarioPlanner(self._planner_cfg, CarlaDataProvider)
         self._planner.set_route(route, clean=True)
 
     def _load_and_wait_for_world(self, town):
@@ -160,7 +153,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         self._running = True
         self.world = self._client.load_world(town)
 
-        # print("self.world:",self.world)
         settings = self.world.get_settings()
         settings.fixed_delta_seconds = 1.0 / self._frame_rate
         settings.synchronous_mode = True
@@ -226,8 +218,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
 
             for i, _ in enumerate(self.ego_vehicles):
                 self.ego_vehicles[i].set_transform(self.ego_vehicles[i].transform)
-        # self.hero_vehicle = ego_vehicles[0]
-        # sync state
         CarlaDataProvider.get_world().tick()
 
     def _setup_route_scenario(self, world, config):
@@ -242,8 +232,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         # if arguments.record:
         #     self.client.start_recorder("{}/{}_rep{}.log".format(arguments.record, config.name, config.repetition_index))
 
-        ## 5.Load scenario and run it
-        #load_scenario(route_scenario, agent_instance, config.repetition_index)
         GameTime.restart()
 
         self._scenario_class = route_scenario
@@ -468,11 +456,6 @@ class ScenarioCarlaEnv(BaseDriveEnv):
         transform = CarlaDataProvider.get_transform(self.ego_vehicles[0])
         location = transform.location
         forward_vector = transform.get_forward_vector()
-        # acceleration = CarlaDataProviderExpand.get_acceleration(self.ego_vehicles[0])
-        # angular_velocity = CarlaDataProviderExpand.get_angular_velocity(self.ego_vehicles[0])
-        # velocity = CarlaDataProviderExpand.get_speed_vector(self.ego_vehicles[0])
-
-        # light_state = self._traffic_light_helper.active_light_state.value
         drive_waypoint = CarlaDataProvider._map.get_waypoint(
             location,
             project_to_road=False,
